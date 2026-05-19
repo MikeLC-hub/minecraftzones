@@ -2,13 +2,16 @@ import GametickQuery = gameplay.timeQuery
 import ExecuteCmd = player.execute;
 type JSONstr = string;
 type CmdStr = string;
-//
-//
-//
+
+const OPENBRACKET = "{";
+const CLOSEBRACKET = "}";
+const NEWLINE = "/n";
+
 type BlockScale = number;
 namespace BlockScale {
-    export const enum CoordKind { Raw, Origin, Terminal, Anchor, Delta };
-    export const CoordName = ["Raw", "Origin", "Terminal", "Anchor", "Delta"];
+    // Coord types, interfaces and enumerators.
+    export const enum CoordKind { Raw, Origin, Terminal, Delta, Anchor };
+    export const CoordName = ["Raw", "Origin", "Terminal", "Delta", "Anchor"];
     export const enum CoordAxis { X, Y, Z };
     export type BlockUnit<K extends CoordKind, A extends CoordAxis> = BlockScale & {
         readonly _Kind: K;
@@ -26,10 +29,56 @@ namespace BlockScale {
         z: Z<K>;
         config: CoordConfig;
     };
-    export interface SegmentConfig {
+
+    export type Raw = Coord<CoordKind.Raw> & {
+        kind: CoordKind.Raw;
+        x: X<CoordKind.Raw>;
+        y: Y<CoordKind.Raw>;
+        z: Z<CoordKind.Raw>;
+    };
+    export type Origin = Coord<CoordKind.Origin> & {
+        readonly kind: CoordKind.Origin;
+        readonly x: X<CoordKind.Origin>;
+        readonly y: Y<CoordKind.Origin>;
+        readonly z: Z<CoordKind.Origin>;
+    };
+    export type Terminal = Coord<CoordKind.Terminal> & {
+        readonly kind: CoordKind.Terminal;
+        readonly x: X<CoordKind.Terminal>;
+        readonly y: Y<CoordKind.Terminal>;
+        readonly z: Z<CoordKind.Terminal>;
+    };
+    export type Delta = Coord<CoordKind.Delta> & {
+        readonly kind: CoordKind.Delta;
+        readonly x: X<CoordKind.Delta>;
+        readonly y: Y<CoordKind.Delta>;
+        readonly z: Z<CoordKind.Delta>;
+    };
+    export interface AnchorConfig extends CoordConfig {
+        xa?: BlockScale;
+        ya?: BlockScale;
+        za?: BlockScale;
+    };
+    export type Anchor = Coord<CoordKind.Anchor> & {
+        kind: CoordKind.Anchor;
+        x: X<CoordKind.Anchor>;
+        y: Y<CoordKind.Anchor>;
+        z: Z<CoordKind.Anchor>;
+        config: AnchorConfig;
+    };
+
+    // Axial types, interfaces and enumerators.    
+    export interface AxialConfig {
         count?: number;
         interval?: BlockScale;
         blocks?: BlockScale;
+    };
+    export const enum ConfigType { ANC, X_C, Y_C, Z_C }
+    export interface SpaceConfigs {
+        ANC?: AnchorConfig;
+        X_C?: AxialConfig;
+        Y_C?: AxialConfig;
+        Z_C?: AxialConfig;
     };
     export type Axial<A extends CoordAxis> = {
         axis: A;
@@ -37,82 +86,77 @@ namespace BlockScale {
         count: number;
         interval: BlockScale;
         blocks: BlockScale;
-        config: SegmentConfig;
+        config: AxialConfig;
     };
 
+    export type AxialX = Axial<CoordAxis.X>;
+    export type AxialY = Axial<CoordAxis.Y>;
+    export type AxialZ = Axial<CoordAxis.Z>;
 
-    const enum SpaceX { Left, Right };
-    const enum SpaceY { Bottom, Top };
-    const enum SpaceZ { Front, Back };
-    export const enum Face { Left, Right, Bottom, Top, Front, Back };
+    // Space types, interfaces and enumerators.
+    export type Space = {
+        Name: string;
+        Origin: Origin;
+        Terminal: Terminal;
+        Anchor: Anchor;
+        Delta: Delta;
+        AxialX: AxialX;
+        AxialY: AxialY;
+        AxialZ: AxialZ;
+    };
+
+    export type InternalSpace = {
+        _Name: string;
+        _Origin: Origin;
+        _Terminal: Terminal;
+        AnchorSource: Coord<any>;
+        Configs: SpaceConfigs;
+    };
+
+    /**
+     * @description Bridges the internal tracking configurations and variables
+     * with the external-facing geometric Space properties.
+     */
+    export type SpaceZone = Space & InternalSpace;
+
+    export interface ModifySpace {
+        Name?: string;
+        Origin?: Origin;
+        Terminal?: Terminal;
+        Configs?: SpaceConfigs;
+    };
+
+    // Space Surface types, interfaces and enumerators.
+    const enum FaceX { Left, Right };
+    const enum FaceY { Bottom, Top };
+    const enum FaceZ { Front, Back };
+    export const enum Face { None, Left, Right, Bottom, Top, Front, Back };
     export const enum Pattern { Solid, Abscissa, Ordinate };
+    const PATTERN_NAME = {
+        [Pattern.Solid]: 'solid',
+        [Pattern.Abscissa]: 'abscissa',
+        [Pattern.Ordinate]: 'ordinate'
+    };
 
     interface SpaceCorner {
-        space_x: SpaceX;
-        space_y: SpaceY;
-        space_z: SpaceZ;
+        faceX: FaceX;
+        faceY: FaceY;
+        faceZ: FaceZ;
     };
     interface SurfaceInfo {
         name: string;
-        abscissa_axis: CoordAxis;
-        ordinate_axis: CoordAxis;
-        origin_corner: SpaceCorner;
-        terminal_corner: SpaceCorner;
-        anchor_config: Coord.AnchorConfig;
+        abscissa: ConfigType;
+        ordinate: ConfigType;
+        origin: SpaceCorner;
+        terminal: SpaceCorner;
+        anc: AnchorConfig;
     };
-    export interface SpaceConfig {
-        Name?: string;
-    };
-    namespace Coord {
-        type Rx = X<CoordKind.Raw>; type Ry = Y<CoordKind.Raw>; type Rz = Z<CoordKind.Raw>;
-        export type Raw = Coord<CoordKind.Raw> & {
-            kind: CoordKind.Raw;
-            x: Rx;
-            y: Ry;
-            z: Rz;
-        };
-        type Ox = X<CoordKind.Origin>; type Oy = Y<CoordKind.Origin>; type Oz = Z<CoordKind.Origin>;
-        export interface Origin extends Coord<CoordKind.Origin> {
-            kind: CoordKind.Origin;
-            x: Ox;
-            y: Oy;
-            z: Oz;
-        };
-        type Tx = X<CoordKind.Terminal>; type Ty = Y<CoordKind.Terminal>; type Tz = Z<CoordKind.Terminal>;
-        export interface Terminal extends Coord<CoordKind.Terminal> {
-            readonly kind: CoordKind.Terminal;
-            readonly x: Tx;
-            readonly y: Ty;
-            readonly z: Tz;
-        };
-        export interface AnchorConfig extends CoordConfig {
-            xa?: BlockScale;
-            ya?: BlockScale;
-            za?: BlockScale;
-        };
-        type Ax = X<CoordKind.Anchor>; type Ay = Y<CoordKind.Anchor>; type Az = Z<CoordKind.Anchor>;
-        export type Anchor = Coord<CoordKind.Anchor> & {
-            kind: CoordKind.Anchor;
-            x: Ax;
-            y: Ay;
-            z: Az;
-            config: AnchorConfig;
-        };
-        type Dx = X<CoordKind.Delta>; type Dy = Y<CoordKind.Delta>; type Dz = Z<CoordKind.Delta>;
-        export type Delta = Coord<CoordKind.Delta> & {
-            readonly kind: CoordKind.Delta;
-            readonly x: Dx;
-            readonly y: Dy;
-            readonly z: Dz;
-        };
 
-
-        export const isRaw = (c: Coord<any>): c is Raw => c.kind === CoordKind.Raw;
-        export const isOrigin = (c: Coord<any>): c is Origin => c.kind === CoordKind.Origin;
-        export const isTerminal = (c: Coord<any>): c is Terminal => c.kind === CoordKind.Terminal;
-        export const isAnchor = (c: Coord<any>): c is Anchor => c.kind === CoordKind.Anchor;
-        export const isDelta = (c: Coord<any>): c is Delta => c.kind === CoordKind.Delta;
-        export function create<K extends CoordKind>(kind: K, x: number, y: number, z: number, _config?: CoordConfig): Coord<K> {
+    export namespace Coord {
+        /**
+         * @description Base low-level initializer renamed from 'create' to 'newCoord'.
+         */
+        function build<K extends CoordKind>(kind: K, x: number, y: number, z: number, _config?: CoordConfig): Coord<K> {
             return {
                 kind: kind,
                 x: (x | 0) as X<K>,
@@ -120,104 +164,109 @@ namespace BlockScale {
                 z: (z | 0) as Z<K>,
                 config: _config || {}
             } as Coord<K>;
+        }
+
+        export const is = {
+            Raw: (c: Coord<any>): c is Raw => c.kind === CoordKind.Raw,
+            Origin: (c: Coord<any>): c is Origin => c.kind === CoordKind.Origin,
+            Terminal: (c: Coord<any>): c is Terminal => c.kind === CoordKind.Terminal,
+            Anchor: (c: Coord<any>): c is Anchor => c.kind === CoordKind.Anchor,
+            Delta: (c: Coord<any>): c is Delta => c.kind === CoordKind.Delta
         };
+
+        /**
+         * @description Unified type casting factories map for clean spatial creations.
+         */
+        export const create = {
+            Raw: (x: number, y: number, z: number) => build(CoordKind.Raw, x, y, z) as Raw,
+            Origin: (x: number, y: number, z: number) => build(CoordKind.Origin, x, y, z) as Origin,
+            Terminal: (x: number, y: number, z: number) => build(CoordKind.Terminal, x, y, z) as Terminal,
+            Anchor: (x: number, y: number, z: number, config?: AnchorConfig) => build(CoordKind.Anchor, x, y, z, config) as Anchor,
+            Delta: (x: number, y: number, z: number) => build(CoordKind.Delta, x, y, z) as Delta
+        };
+
         export function clone<K extends CoordKind>(coord: Coord<K>): Coord<K> {
             const kind: K = coord.kind as K;
             const x: number = coord.x as number;
             const y: number = coord.y as number;
             const z: number = coord.z as number;
             const config: CoordConfig = coord.config || {};
-            return create(kind, x, y, z, config) as Coord<K>;
+            return build(kind, x, y, z, config) as Coord<K>;
         }
+
         export function toCmdStr<K extends CoordKind>(coord: Coord<K>): string {
             return `${coord.x} ${coord.y} ${coord.z}`;
-        };
+        }
+
         export function toString<K extends CoordKind>(coord: Coord<K>): string {
             const kindName = CoordName[coord.kind as number] || "Unknown";
             return `{ kind: ${kindName}, x: ${coord.x}, y: ${coord.y}, z: ${coord.z} }`;
-        };
-        export namespace Raw {
-            export const create = (x: number, y: number, z: number) => Coord.create(CoordKind.Raw, x, y, z) as Raw;
-            export function fromPosition(_pos: Position): Raw {
-                const world_pos = _pos.toWorld();
-                const rx: BlockScale = world_pos.getValue(Axis.X);
-                const ry: BlockScale = world_pos.getValue(Axis.Y);
-                const rz: BlockScale = world_pos.getValue(Axis.Z);
-                return create(rx, ry, rz) as Raw;
-            };
         }
-        export namespace Origin {
-            const create = (x: number, y: number, z: number) => Coord.create(CoordKind.Origin, x, y, z) as Origin;
-            export function getOrigin<O extends CoordKind, T extends CoordKind>(coord0: Coord<O>, coord1: Coord<T>): Origin {
-                const ox = Math.min(coord0.x, coord1.x) | 0;
-                const oy = Math.min(coord0.y, coord1.y) | 0;
-                const oz = Math.min(coord0.z, coord1.z) | 0;
-                return create(ox, oy, oz);
-            };
+
+        export function fromPosition(_pos: Position): Raw {
+            const world_pos = _pos.toWorld();
+            const rx: BlockScale = world_pos.getValue(Axis.X);
+            const ry: BlockScale = world_pos.getValue(Axis.Y);
+            const rz: BlockScale = world_pos.getValue(Axis.Z);
+            return create.Raw(rx, ry, rz);
         }
-        export namespace Terminal {
-            const create = (x: number, y: number, z: number) => Coord.create(CoordKind.Terminal, x, y, z) as Terminal;
-            export function getTerminal<O extends CoordKind, T extends CoordKind>(coord0: Coord<O>, coord1: Coord<T>): Terminal {
-                const tx = Math.max(coord0.x, coord1.x) | 0;
-                const ty = Math.max(coord0.y, coord1.y) | 0;
-                const tz = Math.max(coord0.z, coord1.z) | 0;
-                return create(tx, ty, tz);
-            };
+
+        export function getOrigin<O extends CoordKind, T extends CoordKind>(coord0: Coord<O>, coord1: Coord<T>): Origin {
+            const ox = Math.min(coord0.x, coord1.x) | 0;
+            const oy = Math.min(coord0.y, coord1.y) | 0;
+            const oz = Math.min(coord0.z, coord1.z) | 0;
+            return create.Origin(ox, oy, oz);
         }
-        export namespace Anchor {
-            const create = (x: number, y: number, z: number, config: AnchorConfig): Anchor => Coord.create(CoordKind.Anchor, x, y, z) as Anchor;
-            export function fromCoord<K extends CoordKind>(coord: Coord<K>, _config?: AnchorConfig): Anchor {
-                const config: AnchorConfig = _config ? _config : {};
-                const use_ceiling = Coord.isTerminal(coord);
-                const anchorCalc = (scalar: number, anchor_at: number): number => {
-                    return use_ceiling
-                        ? Math.ceil(scalar / anchor_at) * anchor_at
-                        : Math.floor(scalar / anchor_at) * anchor_at;
-                };
 
-                let _x: number = coord.x | 0;
-                let _y: number = coord.y | 0;
-                let _z: number = coord.z | 0;
-
-                if (config.xa) _x = anchorCalc(_x, config.xa) | 0;
-                if (config.ya) _y = anchorCalc(_y, config.ya) | 0;
-                if (config.za) _z = anchorCalc(_z, config.za) | 0;
-
-                const kind: CoordKind = CoordKind.Anchor
-                const x: Ax = _x as Ax;
-                const y: Ay = _y as Ay;
-                const z: Az = _z as Az;
-
-                return create(x, y, z, config) as Anchor;
-            };
+        export function getTerminal<O extends CoordKind, T extends CoordKind>(coord0: Coord<O>, coord1: Coord<T>): Terminal {
+            const tx = Math.max(coord0.x, coord1.x) | 0;
+            const ty = Math.max(coord0.y, coord1.y) | 0;
+            const tz = Math.max(coord0.z, coord1.z) | 0;
+            return create.Terminal(tx, ty, tz);
         }
-        export namespace Delta {
-            const create = (x: number, y: number, z: number): Delta => Coord.create(CoordKind.Delta, x, y, z) as Delta;
-            export function fromCoords<O extends CoordKind, T extends CoordKind>(coord0: Coord<O>, coord1: Coord<T>): Delta {
-                const dx = (Math.abs(coord1.x - coord0.x) + 1) | 0;
-                const dy = (Math.abs(coord1.y - coord0.y) + 1) | 0;
-                const dz = (Math.abs(coord1.z - coord0.z) + 1) | 0;
-                return create(dx, dy, dz) as Delta;
+
+        export function getDelta<O extends CoordKind, T extends CoordKind>(coord0: Coord<O>, coord1: Coord<T>): Delta {
+            const dx = (Math.abs(coord1.x - coord0.x) + 1) | 0;
+            const dy = (Math.abs(coord1.y - coord0.y) + 1) | 0;
+            const dz = (Math.abs(coord1.z - coord0.z) + 1) | 0;
+            return create.Delta(dx, dy, dz);
+        }
+
+        export function toAnchor<K extends CoordKind>(coord: Coord<K>, _config?: AnchorConfig): Anchor {
+            const config: AnchorConfig = _config ? _config : {};
+            const use_ceiling = is.Terminal(coord);
+            const anchorCalc = (scalar: number, anchor_at: number): number => {
+                return use_ceiling
+                    ? Math.ceil(scalar / anchor_at) * anchor_at
+                    : Math.floor(scalar / anchor_at) * anchor_at;
             };
+
+            let _x: number = coord.x | 0;
+            let _y: number = coord.y | 0;
+            let _z: number = coord.z | 0;
+
+            if (config.xa) _x = anchorCalc(_x, config.xa) | 0;
+            if (config.ya) _y = anchorCalc(_y, config.ya) | 0;
+            if (config.za) _z = anchorCalc(_z, config.za) | 0;
+
+            return create.Anchor(_x, _y, _z, config);
         }
     }
-    namespace Axial {
+
+    export namespace Axial {
         const INTERVAL_LIMIT = 64;
-        export const GRID_CONFIGURATION: SegmentConfig = { interval: 10, blocks: 1 };
-        export type Zx = Axial<CoordAxis.X>;
-        export type Zy = Axial<CoordAxis.Y>;
-        export type Zz = Axial<CoordAxis.Z>;
+        export const GRID_CONFIG: AxialConfig = { interval: 10, blocks: 1 };
+
         /**
          * Configures an existing _Axis object in-place.
          */
-        export function configure<A extends CoordAxis>(axial: Axial<A>, _config?: SegmentConfig): void {
+        export function configure<A extends CoordAxis>(axial: Axial<A>, _config?: AxialConfig): void {
             const length: BlockScale = axial.length | 1;
-            // Base calculation
             let count: number = Math.ceil(length / INTERVAL_LIMIT);
             let interval: BlockScale = Math.ceil(length / count);
             let blocks: BlockScale = interval;
 
-            const config: SegmentConfig = _config ? _config : axial.config;
+            const config: AxialConfig = _config ? _config : axial.config;
 
             const config_count = config.count;
             const config_interval = config.interval;
@@ -227,37 +276,45 @@ namespace BlockScale {
                 count = Math.max(count, config_count);
                 interval = Math.ceil(length / count);
                 blocks = interval;
-            };
+            }
             if (config_interval !== undefined) {
                 interval = Math.max(1, Math.min(INTERVAL_LIMIT, config_interval));
                 count = Math.ceil(length / interval);
                 blocks = interval;
-            };
+            }
             if (config_blocks !== undefined) {
                 blocks = Math.max(1, Math.min(interval, config_blocks));
-            };
+            }
 
-            // Apply mutation
             axial.count = count | 0;
             axial.interval = interval | 0;
             axial.blocks = blocks | 0;
             axial.config = config;
-        };
+        }
+
+        export function grid<A extends CoordAxis>(axial: Axial<A>): void {
+            configure(axial, GRID_CONFIG);
+        }
 
         /**
          * Factory function for creating a new _Axis object.
-         * Uses configure() internally to initialize values.
          */
-        export function create<A extends CoordAxis>(axis: A, delta: Delta, _config?: SegmentConfig): Axial<A> {
+        function build<A extends CoordAxis>(axis: A, delta: Delta, _config?: AxialConfig): Axial<A> {
             let axial: Axial<A> = { axis: axis, length: -1, count: 1, interval: 1, blocks: 1, config: {} };
             switch (axis) {
                 case CoordAxis.X: axial.length = delta.x; break;
                 case CoordAxis.Y: axial.length = delta.y; break;
                 case CoordAxis.Z: axial.length = delta.z; break;
                 default: axial.length = 0;
-            };
+            }
             configure(axial, _config);
             return axial;
+        }
+
+        export const create = {
+            X: (delta: Delta, config?: AxialConfig) => build(CoordAxis.X, delta, config) as AxialX,
+            Y: (delta: Delta, config?: AxialConfig) => build(CoordAxis.Y, delta, config) as AxialY,
+            Z: (delta: Delta, config?: AxialConfig) => build(CoordAxis.Z, delta, config) as AxialZ,
         };
 
         export function clone<A extends CoordAxis>(axial: Axial<A>): Axial<A> {
@@ -266,267 +323,332 @@ namespace BlockScale {
             const count: number = axial.count | 0;
             const interval: BlockScale = axial.interval | 0;
             const blocks: BlockScale = axial.blocks | 0;
-            return { axis, length, count, interval, blocks } as Axial<A>;
-        };
+            return { axis, length, count, interval, blocks, config: axial.config || {} } as Axial<A>;
+        }
 
         export function toString<A extends CoordAxis>(axial: Axial<A>): string {
             return `{ axis: ${axial.axis}, length: ${axial.length}, count: ${axial.count}, interval: ${axial.interval}, blocks: ${axial.blocks} }`;
-        };
-
-        export namespace Zx {
-            export function create(delta: Delta, _config?: SegmentConfig): Zx {
-                return Axial.create(CoordAxis.X, delta, _config);
-            };
-        }
-        export namespace Zy {
-            export function create(delta: Delta, _config?: SegmentConfig): Zy {
-                return Axial.create(CoordAxis.Y, delta, _config);
-            };
-        }
-        export namespace Zz {
-            export function create(delta: Delta, _config?: SegmentConfig): Zz {
-                return Axial.create(CoordAxis.Z, delta, _config);
-            };
         }
     }
-    import Raw = Coord.Raw;
-    import Origin = Coord.Origin;
-    import Terminal = Coord.Terminal;
-    import Delta = Coord.Delta;
-    import Anchor = Coord.Anchor;
-    import AnchorConfig = Coord.AnchorConfig;
-    import Zx = Axial.Zx;
-    import Zy = Axial.Zy;
-    import Zz = Axial.Zz;
-    export interface Space {
-        Name: string;
-        Origin: Origin;
-        Terminal: Terminal;
-        Anchor: Anchor;
-        Delta: Delta;
-        Zx: Zx;
-        Zy: Zy;
-        Zz: Zz;
-    };
-    namespace Space {
+
+    export namespace InternalSpace {
         const VOLUME_LIMIT: number = 32768;
-        function applyVolumeLimit(space: Space): void {
-            const area = (space.Zx.interval * space.Zz.interval) | 0;
-            const y_max = (VOLUME_LIMIT / (area > 0 ? area : 1)) | 0;
-            const y_interval = space.Zy.interval | 0;
-            const y_bounded = y_max < y_interval ? y_max : y_interval;
-            const interval = y_bounded > 0 ? y_bounded : 1;
-            Axial.configure(space.Zy, { interval });
-        };
-        function getCorner(space: Space, corner: SpaceCorner, outside?: boolean): Raw {
-            const offset: number = outside ? 1 : 0;
-            const x: number = (corner.space_x === SpaceX.Left) ? space.Origin.x - offset : space.Terminal.x + offset;
-            const y: number = (corner.space_y === SpaceY.Bottom) ? space.Origin.y - offset : space.Terminal.y + offset;
-            const z: number = (corner.space_z === SpaceZ.Front) ? space.Origin.z - offset : space.Terminal.z + offset;
-            return Raw.create(x, y, z);
-        };
-        export function clone(space: Space): Space {
-            const Name: string = `${space.Name}_clone`
-            const Origin: Origin = Coord.clone(space.Origin);
-            const Terminal: Terminal = Coord.clone(space.Terminal);
-            const Delta: Delta = Coord.clone(space.Delta);
-            const Anchor: Anchor = Coord.clone(space.Anchor);
-            const Zx: Zx = Axial.clone(space.Zx);
-            const Zy: Zy = Axial.clone(space.Zy);
-            const Zz: Zz = Axial.clone(space.Zz);
-            return { Name, Origin, Terminal, Anchor, Delta, Zx, Zy, Zz } as Space;
-        };
-        export function getCalibrated(raw_space: Space, anchor_config?: AnchorConfig): Space {
-            const calibrated = Space.fromCoords(raw_space.Origin, raw_space.Terminal);
-            calibrated.Anchor = Anchor.fromCoord(calibrated.Origin, anchor_config);
-            applyVolumeLimit(calibrated)
-            return calibrated as Space;
-        };
-        export function configureZoneAxial(space: Space, axis: CoordAxis, config?: SegmentConfig): void {
-            let axial: Axial<typeof axis>;
-            switch (axis) {
-                case CoordAxis.X: axial = space.Zx; break;
-                case CoordAxis.Y: axial = space.Zy; break;
-                case CoordAxis.Z: axial = space.Zz; break;
-                default: return;
-            };
-            if (axial === null) return;
 
-            Axial.configure(axial, config);
-            applyVolumeLimit(space);
-        };
-        export function fromCoords<O extends CoordKind, T extends CoordKind>(coord0: Coord<O>, coord1: Coord<T>, config?: SpaceConfig): Space {
-            const origin: Origin = Origin.getOrigin(coord0, coord1);
-            const terminal: Terminal = Terminal.getTerminal(coord0, coord1);
-            const delta: Delta = Delta.fromCoords(origin, terminal);
-            const anchor: Anchor = Anchor.fromCoord(origin);
-            const name: string = (config && config.Name) ? config.Name : 'MyZone';
+        function CloneAnchorConfig(config: AnchorConfig): AnchorConfig {
+            return {
+                xa: (config.xa | 0) || undefined,
+                ya: (config.ya | 0) || undefined,
+                za: (config.za | 0) || undefined,
+            } as AnchorConfig;
+        }
 
-            const zoned: Space = {
-                Name: name,
-                Origin: origin,
-                Terminal: terminal,
-                Anchor: anchor,
-                Delta: delta,
-                Zx: Zx.create(delta),
-                Zy: Zy.create(delta),
-                Zz: Zz.create(delta)
+        function CloneAxialConfig(config: AxialConfig): AxialConfig {
+            return {
+                count: (config.count | 0) || undefined,
+                interval: (config.interval | 0) || undefined,
+                blocks: (config.blocks | 0) || undefined,
+            } as AxialConfig;
+        }
+
+        function CloneSpaceConfigs(configs: SpaceConfigs): SpaceConfigs {
+            return {
+                ANC: configs.ANC ? CloneAnchorConfig(configs.ANC) : undefined,
+                X_C: configs.X_C ? CloneAxialConfig(configs.X_C) : undefined,
+                Y_C: configs.Y_C ? CloneAxialConfig(configs.Y_C) : undefined,
+                Z_C: configs.Z_C ? CloneAxialConfig(configs.Z_C) : undefined,
+            } as SpaceConfigs;
+        }
+
+        export function ApplyVolumeLimit(internal: InternalSpace): void {
+            const x_interval: BlockScale = getAxialX(internal).interval | 0;
+            const z_interval: BlockScale = getAxialZ(internal).interval | 0;
+
+            const areaXZ: BlockScale = Math.max(x_interval * z_interval, 1) | 0;
+            const y_max: BlockScale = (VOLUME_LIMIT / areaXZ) | 0;
+
+            const y_interval: BlockScale = Math.clamp(1, y_max, (getAxialY(internal).interval | 0));
+
+            if (internal.Configs.Y_C) {
+                internal.Configs.Y_C.interval = y_interval;
+                return;
+            }
+            internal.Configs.Y_C = { interval: y_interval };
+        }
+
+        export function modify(internal: InternalSpace, modifyObj: ModifySpace): void {
+            const modify_name = modifyObj.Name || undefined;
+            const modify_origin = modifyObj.Origin || undefined;
+            const modify_terminal = modifyObj.Terminal || undefined;
+            const modify_configs = modifyObj.Configs || undefined;
+
+            if (modify_name) {
+                internal._Name = modify_name;
+            }
+
+            if (modify_origin || modify_terminal) {
+                const o = modify_origin || internal._Origin;
+                const t = modify_terminal || internal._Terminal;
+
+                internal._Origin = Coord.getOrigin(o, t);
+                internal._Terminal = Coord.getTerminal(o, t);
+            }
+
+            if (modify_configs) {
+                const intCfgs = internal.Configs;
+
+                const modAnc = modify_configs.ANC || intCfgs.ANC || undefined;
+                const modXax = modify_configs.X_C || intCfgs.X_C || undefined;
+                const modYax = modify_configs.Y_C || intCfgs.Y_C || undefined;
+                const modZax = modify_configs.Z_C || intCfgs.Z_C || undefined;
+
+                internal.Configs.ANC = modAnc;
+                internal.Configs.X_C = modXax;
+                internal.Configs.Y_C = modYax;
+                internal.Configs.Z_C = modZax;
+            }
+        }
+
+        export function create(coord0: Coord<any>, coord1: Coord<any>, configs?: SpaceConfigs): InternalSpace {
+            const _Name: string = 'RawSpace';
+            const _Origin: Origin = Coord.getOrigin(coord0, coord1);
+            const _Terminal: Terminal = Coord.getTerminal(coord0, coord1);
+            const AnchorSource: Coord<any> = _Origin;
+
+            const _Configs: SpaceConfigs = {
+                ANC: configs.ANC || undefined,
+                X_C: configs.X_C || undefined,
+                Y_C: configs.Y_C || undefined,
+                Z_C: configs.Z_C || undefined,
             };
-            applyVolumeLimit(zoned);
-            return zoned;
-        };
+
+            const internal: InternalSpace = { _Name, _Origin, _Terminal, AnchorSource, Configs: _Configs };
+            ApplyVolumeLimit(internal);
+            return internal;
+        }
+
+        export function clone(internal: InternalSpace): InternalSpace {
+            return {
+                _Name: `${internal._Name}_clone` as string,
+                _Origin: Coord.clone(internal._Origin) as Origin,
+                _Terminal: Coord.clone(internal._Terminal) as Terminal,
+                AnchorSource: Coord.clone(internal.AnchorSource) as Coord<any>,
+                Configs: CloneSpaceConfigs(internal.Configs) as SpaceConfigs,
+            } as InternalSpace;
+        }
+
+        export function overlay(internal: InternalSpace, source: InternalSpace): void {
+            internal._Name = source._Name;
+            internal._Origin = source._Origin;
+            internal._Terminal = source._Terminal;
+            internal.AnchorSource = source.AnchorSource;
+            internal.Configs = source.Configs;
+        }
+        export function getName(internal: InternalSpace): string {
+            return internal._Name;
+        }
+        export function getOrigin(internal: InternalSpace): Origin {
+            return internal._Origin;
+        }
+        export function getTerminal(internal: InternalSpace): Terminal {
+            return internal._Terminal;
+        }
+        export function getDelta(internal: InternalSpace): Delta {
+            return Coord.getDelta(internal._Origin, internal._Terminal);
+        }
+        export function getAnchor(internal: InternalSpace): Anchor {
+            return Coord.toAnchor(internal.AnchorSource, internal.Configs.ANC);
+        }
+        export function getAxialX(internal: InternalSpace): AxialX {
+            const delta: Delta = getDelta(internal);
+            const x_config = internal.Configs.X_C || undefined;
+            return Axial.create.X(delta, x_config);
+        }
+        export function getAxialY(internal: InternalSpace): AxialY {
+            const delta: Delta = getDelta(internal);
+            const y_config = internal.Configs.Y_C || undefined;
+            return Axial.create.Y(delta, y_config);
+        }
+        export function getAxialZ(internal: InternalSpace): AxialZ {
+            const delta: Delta = getDelta(internal);
+            const z_config = internal.Configs.Z_C || undefined;
+            return Axial.create.Z(delta, z_config);
+        }
+    }
+
+    export namespace Space {
         export function toString(space: Space): string {
             const origin_str = Coord.toString(space.Origin);
             const terminal_str = Coord.toString(space.Terminal);
             const anchor_str = Coord.toString(space.Anchor);
-            const zx_str = Axial.toString(space.Zx);
-            const zy_str = Axial.toString(space.Zy);
-            const zz_str = Axial.toString(space.Zz);
+            const AxialX_str = Axial.toString(space.AxialX);
+            const AxialY_str = Axial.toString(space.AxialY);
+            const AxialZ_str = Axial.toString(space.AxialZ);
 
-            return ["{", origin_str, terminal_str, anchor_str, zx_str, zy_str, zz_str, "}"].join("\n")
-        };
+            return ["{", origin_str, terminal_str, anchor_str, AxialX_str, AxialY_str, AxialZ_str, "}"].join("\n");
+        }
+
+        function GetRawCorner(space: Space, corner: SpaceCorner, outside?: boolean): Raw {
+            const offset: number = outside ? 1 : 0;
+            const x: number = (corner.faceX === FaceX.Left) ? space.Origin.x - offset : space.Terminal.x + offset;
+            const y: number = (corner.faceY === FaceY.Bottom) ? space.Origin.y - offset : space.Terminal.y + offset;
+            const z: number = (corner.faceZ === FaceZ.Front) ? space.Origin.z - offset : space.Terminal.z + offset;
+            return Coord.create.Raw(x, y, z);
+        }
+
         export namespace Surface {
             const ANCHOR_ON: number = 10;
             const FACE_INFO: { [key: number]: SurfaceInfo } = {
                 [Face.Left]: {
                     name: "X-Left",
-                    abscissa_axis: CoordAxis.Z, ordinate_axis: CoordAxis.Y,
-                    origin_corner: { space_x: SpaceX.Left, space_y: SpaceY.Bottom, space_z: SpaceZ.Front },
-                    terminal_corner: { space_x: SpaceX.Left, space_y: SpaceY.Top, space_z: SpaceZ.Back },
-                    anchor_config: { ya: ANCHOR_ON, za: ANCHOR_ON }
+                    abscissa: ConfigType.Y_C, ordinate: ConfigType.Z_C,
+                    origin: { faceX: FaceX.Left, faceY: FaceY.Bottom, faceZ: FaceZ.Front },
+                    terminal: { faceX: FaceX.Left, faceY: FaceY.Top, faceZ: FaceZ.Back },
+                    anc: { ya: ANCHOR_ON, za: ANCHOR_ON }
                 },
                 [Face.Right]: {
                     name: "X+Right",
-                    abscissa_axis: CoordAxis.Z, ordinate_axis: CoordAxis.Y,
-                    origin_corner: { space_x: SpaceX.Right, space_y: SpaceY.Bottom, space_z: SpaceZ.Front },
-                    terminal_corner: { space_x: SpaceX.Right, space_y: SpaceY.Top, space_z: SpaceZ.Back },
-                    anchor_config: { ya: ANCHOR_ON, za: ANCHOR_ON }
+                    abscissa: ConfigType.Y_C, ordinate: ConfigType.Z_C,
+                    origin: { faceX: FaceX.Right, faceY: FaceY.Bottom, faceZ: FaceZ.Front },
+                    terminal: { faceX: FaceX.Right, faceY: FaceY.Top, faceZ: FaceZ.Back },
+                    anc: { ya: ANCHOR_ON, za: ANCHOR_ON }
                 },
                 [Face.Bottom]: {
                     name: "Y-Bottom",
-                    abscissa_axis: CoordAxis.X, ordinate_axis: CoordAxis.Z,
-                    origin_corner: { space_x: SpaceX.Left, space_y: SpaceY.Bottom, space_z: SpaceZ.Front },
-                    terminal_corner: { space_x: SpaceX.Right, space_y: SpaceY.Bottom, space_z: SpaceZ.Back },
-                    anchor_config: { xa: ANCHOR_ON, za: ANCHOR_ON }
+                    abscissa: ConfigType.X_C, ordinate: ConfigType.Z_C,
+                    origin: { faceX: FaceX.Left, faceY: FaceY.Bottom, faceZ: FaceZ.Front },
+                    terminal: { faceX: FaceX.Right, faceY: FaceY.Bottom, faceZ: FaceZ.Back },
+                    anc: { xa: ANCHOR_ON, za: ANCHOR_ON }
                 },
                 [Face.Top]: {
                     name: "Y+Top",
-                    abscissa_axis: CoordAxis.X, ordinate_axis: CoordAxis.Z,
-                    origin_corner: { space_x: SpaceX.Left, space_y: SpaceY.Top, space_z: SpaceZ.Front },
-                    terminal_corner: { space_x: SpaceX.Right, space_y: SpaceY.Top, space_z: SpaceZ.Back },
-                    anchor_config: { xa: ANCHOR_ON, za: ANCHOR_ON }
+                    abscissa: ConfigType.X_C, ordinate: ConfigType.Z_C,
+                    origin: { faceX: FaceX.Left, faceY: FaceY.Top, faceZ: FaceZ.Front },
+                    terminal: { faceX: FaceX.Right, faceY: FaceY.Top, faceZ: FaceZ.Back },
+                    anc: { xa: ANCHOR_ON, za: ANCHOR_ON }
                 },
                 [Face.Front]: {
                     name: "Z-Front",
-                    abscissa_axis: CoordAxis.X, ordinate_axis: CoordAxis.Y,
-                    origin_corner: { space_x: SpaceX.Left, space_y: SpaceY.Bottom, space_z: SpaceZ.Front },
-                    terminal_corner: { space_x: SpaceX.Right, space_y: SpaceY.Top, space_z: SpaceZ.Front },
-                    anchor_config: { xa: ANCHOR_ON, ya: ANCHOR_ON }
+                    abscissa: ConfigType.X_C, ordinate: ConfigType.Y_C,
+                    origin: { faceX: FaceX.Left, faceY: FaceY.Bottom, faceZ: FaceZ.Front },
+                    terminal: { faceX: FaceX.Right, faceY: FaceY.Top, faceZ: FaceZ.Front },
+                    anc: { xa: ANCHOR_ON, ya: ANCHOR_ON }
                 },
                 [Face.Back]: {
                     name: "Z+Back",
-                    abscissa_axis: CoordAxis.X, ordinate_axis: CoordAxis.Y,
-                    origin_corner: { space_x: SpaceX.Left, space_y: SpaceY.Bottom, space_z: SpaceZ.Back },
-                    terminal_corner: { space_x: SpaceX.Right, space_y: SpaceY.Top, space_z: SpaceZ.Back },
-                    anchor_config: { xa: ANCHOR_ON, ya: ANCHOR_ON }
+                    abscissa: ConfigType.X_C, ordinate: ConfigType.Y_C,
+                    origin: { faceX: FaceX.Left, faceY: FaceY.Bottom, faceZ: FaceZ.Back },
+                    terminal: { faceX: FaceX.Right, faceY: FaceY.Top, faceZ: FaceZ.Back },
+                    anc: { xa: ANCHOR_ON, ya: ANCHOR_ON }
                 }
             };
-            export function getFace(space: Space, face: Face, pattern: Pattern, outside?: boolean): Space {
+
+            export function getFace(space: Space, face: Face, pattern: Pattern, outside?: boolean): InternalSpace {
                 const face_info = FACE_INFO[face];
                 if (!face_info) return null;
 
-                const GRID_AXIAL_CONFIG = Axial.GRID_CONFIGURATION;
 
-                const FACE_NAME: string = `${space.Name}~${face_info.name}`;
-                const ABSCISSA_AXIS: CoordAxis = face_info.abscissa_axis;
-                const ORDINATE_AXIS: CoordAxis = face_info.ordinate_axis;
-                const ORIGIN_CORNER: SpaceCorner = face_info.origin_corner;
-                const TERMINAL_CORNER: SpaceCorner = face_info.terminal_corner;
-                const ANCHOR_CONFIG: AnchorConfig = face_info.anchor_config;
-
-                const SpaceCorner = (_corner: SpaceCorner): Raw => {
-                    return getCorner(space, _corner, outside);
+                const GRID_AXIAL_CONFIG = Axial.GRID_CONFIG;
+                const Configs: SpaceConfigs = { ANC: face_info.anc }
+                const GridConfig = (config_type: ConfigType) => {
+                    switch (config_type) {
+                        case ConfigType.X_C: Configs.X_C = GRID_AXIAL_CONFIG; break;
+                        case ConfigType.Y_C: Configs.Y_C = GRID_AXIAL_CONFIG; break;
+                        case ConfigType.Z_C: Configs.Z_C = GRID_AXIAL_CONFIG; break;
+                        default: break;
+                    }
                 };
-                const AnchorToGrid = (_coord: Coord<any>): Anchor => {
-                    return Anchor.fromCoord(_coord, ANCHOR_CONFIG);
-                };
-                const GridAxial = (grid_zone: Space, axis: CoordAxis) => {
-                    Space.configureZoneAxial(grid_zone, axis, GRID_AXIAL_CONFIG);
+                const ANC: AnchorConfig = face_info.anc;
+                const SpaceCorner = (_corner: SpaceCorner): Anchor => {
+                    const corner = GetRawCorner(space, _corner, outside);
+                    return Coord.toAnchor(corner, face_info.anc);
                 };
 
-                const coord0: Coord<any> = AnchorToGrid(SpaceCorner(ORIGIN_CORNER));
-                const coord1: Coord<any> = AnchorToGrid(SpaceCorner(TERMINAL_CORNER));
-
-                const Surface: Space = Space.fromCoords(coord0, coord1, { Name: `${FACE_NAME} Surface` });
-
-                const Abscissa: Space = Space.clone(Surface);
-                GridAxial(Abscissa, ABSCISSA_AXIS);
-                Abscissa.Name = `${FACE_NAME} Abscissa`;
-
-                const Ordinate: Space = Space.clone(Surface);
-                GridAxial(Ordinate, ORDINATE_AXIS);
-                Ordinate.Name = `${FACE_NAME} Ordinate`;
-
-                let surfaceSpace: Space = Surface;
 
                 switch (pattern) {
-                    case Pattern.Solid: surfaceSpace = Surface; break;
-                    case Pattern.Abscissa: surfaceSpace = Abscissa; break;
-                    case Pattern.Ordinate: surfaceSpace = Ordinate; break;
-                };
-                return surfaceSpace;
-            };
+                    case Pattern.Abscissa: GridConfig(face_info.abscissa); break;
+                    case Pattern.Ordinate: GridConfig(face_info.ordinate); break;
+                    case Pattern.Solid: break;
+                    default: break;
+                }
+
+                const coord0 = SpaceCorner(face_info.origin);
+                const coord1 = SpaceCorner(face_info.terminal);
+
+                const _Name: string = [space.Name, face_info.name, PATTERN_NAME[pattern]].join("-");
+
+                const _Origin = Coord.getOrigin(coord0, coord1);
+                const _Terminal = Coord.getTerminal(coord0, coord1);
+                const AnchorSource = _Origin;
+
+                const SurfaceSpace: InternalSpace = { _Name, _Origin, _Terminal, AnchorSource, Configs }
+                InternalSpace.ApplyVolumeLimit(SurfaceSpace);
+                return SurfaceSpace
+
+
+            }
         }
     }
-    export class Zone implements Space {
-        private readonly InitialOrigin: Origin;
-        private readonly InitialTerminal: Terminal;
+    const INITIAL_SPACE: string = "InitialSpace"
+    /**
+     * @description Zone class representing an actual 3D chunk boundary selection.
+     * Implements SpaceZone to unify outer-facing properties and internal metadata representation.
+     */
+    export class Zone implements SpaceZone {
+        private readonly initial0: Coord<any>;
+        private readonly initial1: Coord<any>;
 
-        private _Name: string;
-        private _Origin: Origin;
-        private _Terminal: Terminal;
-        private _Anchor: Anchor;
-        private _Zx: Zx;
-        private _Zy: Zy;
-        private _Zz: Zz;
+        public _Name: string;
+        public _Origin: Origin;
+        public _Terminal: Terminal;
 
-        public get Name(): string { return this._Name };
-        public get Origin(): Origin { return this._Origin };
-        public get Terminal(): Terminal { return this._Terminal };
-        public get Anchor(): Anchor { return this._Anchor };
-        public get Delta(): Delta { return Delta.fromCoords(this.Terminal, this.Origin) };
-        public get Zx(): Zx { return this._Zx };
-        public get Zy(): Zy { return this._Zy };
-        public get Zz(): Zz { return this._Zz };
+        public AnchorSource: Coord<any>;
+        public Configs: SpaceConfigs;
 
-        public constructor(pos0: Position, pos1: Position, _name?: string) {
-            const coord0 = Raw.fromPosition(pos0);
-            const coord1 = Raw.fromPosition(pos1);
-            const config = _name ? { Name: _name } : undefined;
-            this.setSpace(coord0, coord1, config);
-            this.InitialOrigin = Coord.clone(this.Origin);
-            this.InitialTerminal = Coord.clone(this.Terminal);
+        private overlay(internal: InternalSpace): void {
+            InternalSpace.overlay(this as InternalSpace, internal);
         };
-        private overlaySpace(space: Space) {
-            this._Name = space.Name;
-            this._Origin = space.Origin;
-            this._Terminal = space.Terminal;
-            this._Anchor = space.Anchor;
-            this._Zx = space.Zx;
-            this._Zy = space.Zy;
-            this._Zz = space.Zz;
+        public Reset(): void {
+            const InternalDefl: InternalSpace = InternalSpace.create(this.initial0, this.initial1, { ANC: {} });
+            InternalDefl._Name = this._Name || INITIAL_SPACE;
+            this.overlay(InternalDefl);
         };
-        private setSpace<O extends CoordKind, T extends CoordKind>(coord0: Coord<O>, coord1: Coord<T>, config?: SpaceConfig): void {
-            const space = Space.fromCoords(coord0, coord1);
-            this.overlaySpace(space);
+        public constructor(pos0: Position, pos1: Position, name?: string) {
+            this._Name = name || INITIAL_SPACE;
+            this.initial0 = Coord.fromPosition(pos0);
+            this.initial1 = Coord.fromPosition(pos1);
+            this.Reset();
         };
-        public setSurface(face: Face, pattern: Pattern, outside?: boolean): void {
-            this.reset();
-            const faceZone = Space.Surface.getFace(this, face, pattern, outside);
-            this.overlaySpace(faceZone);
+        public get Name(): string {
+            return InternalSpace.getName(this as InternalSpace);
         };
-        public reset(): void {
-            this.setSpace(this.InitialOrigin, this.InitialTerminal);
+        public set Name(val: string) {
+            this._Name = val;
+        };
+        public get Origin(): Origin {
+            return InternalSpace.getOrigin(this as InternalSpace);
+        };
+        public get Terminal(): Terminal {
+            return InternalSpace.getTerminal(this as InternalSpace);
+        };
+        public get Delta(): Delta {
+            return InternalSpace.getDelta(this as InternalSpace);
+        };
+        public get Anchor(): Anchor {
+            return InternalSpace.getAnchor(this as InternalSpace);
+        };
+        public get AxialX(): AxialX {
+            return InternalSpace.getAxialX(this as InternalSpace);
+        };
+        public get AxialY(): AxialY {
+            return InternalSpace.getAxialY(this as InternalSpace);
+        };
+        public get AxialZ(): AxialZ {
+            return InternalSpace.getAxialZ(this as InternalSpace);
+        };
+        public setFace(face: Face, pattern: Pattern, outside?: boolean): void {
+            this.Reset();
+            if (face === Face.None) return;
+            this.overlay(Space.Surface.getFace(this as Space, face, pattern, outside));
         };
     };
 }
@@ -846,7 +968,7 @@ namespace Runtime {
     export function StartTracking(info: Info): void {
         info.InProgress = true;
         info.CurrentZoneIndex = 0;
-        info.LastZoneIndex = (info.Zx.count * info.Zy.count * info.Zz.count) | 0;
+        info.LastZoneIndex = (info.AxialX.count * info.AxialY.count * info.AxialZ.count) | 0;
         info.StartTime = GametickQuery(GAME_TIME) | 0;
         info.ElapsedTime = 0;
         info.CurrentRate = 0;
