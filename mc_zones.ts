@@ -137,7 +137,6 @@ namespace BlockScale {
         [Pattern.Abscissa]: 'abscissa',
         [Pattern.Ordinate]: 'ordinate'
     };
-
     interface SpaceCorner {
         faceX: FaceX;
         faceY: FaceY;
@@ -151,7 +150,6 @@ namespace BlockScale {
         terminal: SpaceCorner;
         anc: AnchorConfig;
     };
-
     export namespace Coord {
         /**
          * @description Base low-level initializer renamed from 'create' to 'newCoord'.
@@ -252,7 +250,6 @@ namespace BlockScale {
             return create.Anchor(_x, _y, _z, config);
         }
     }
-
     export namespace Axial {
         const INTERVAL_LIMIT = 64;
         export const GRID_CONFIG: AxialConfig = { interval: 10, blocks: 1 };
@@ -330,7 +327,6 @@ namespace BlockScale {
             return `{ axis: ${axial.axis}, length: ${axial.length}, count: ${axial.count}, interval: ${axial.interval}, blocks: ${axial.blocks} }`;
         }
     }
-
     export namespace InternalSpace {
         const VOLUME_LIMIT: number = 32768;
 
@@ -474,7 +470,6 @@ namespace BlockScale {
             return Axial.create.Z(delta, z_config);
         }
     }
-
     export namespace Space {
         export function toString(space: Space): string {
             const origin_str = Coord.toString(space.Origin);
@@ -498,6 +493,13 @@ namespace BlockScale {
         export namespace Surface {
             const ANCHOR_ON: number = 10;
             const FACE_INFO: { [key: number]: SurfaceInfo } = {
+                [Face.None]: {
+                    name: '',
+                    abscissa: undefined, ordinate: undefined,
+                    origin: { faceX: FaceX.Left, faceY: FaceY.Bottom, faceZ: FaceZ.Front },
+                    terminal: { faceX: FaceX.Right, faceY: FaceY.Top, faceZ: FaceZ.Back },
+                    anc: {}
+                },
                 [Face.Left]: {
                     name: "X-Left",
                     abscissa: ConfigType.Y_C, ordinate: ConfigType.Z_C,
@@ -545,8 +547,6 @@ namespace BlockScale {
             export function getFace(space: Space, face: Face, pattern: Pattern, outside?: boolean): InternalSpace {
                 const face_info = FACE_INFO[face];
                 if (!face_info) return null;
-
-
                 const GRID_AXIAL_CONFIG = Axial.GRID_CONFIG;
                 const Configs: SpaceConfigs = { ANC: face_info.anc }
                 const GridConfig = (config_type: ConfigType) => {
@@ -562,8 +562,6 @@ namespace BlockScale {
                     const corner = GetRawCorner(space, _corner, outside);
                     return Coord.toAnchor(corner, face_info.anc);
                 };
-
-
                 switch (pattern) {
                     case Pattern.Abscissa: GridConfig(face_info.abscissa); break;
                     case Pattern.Ordinate: GridConfig(face_info.ordinate); break;
@@ -588,14 +586,20 @@ namespace BlockScale {
             }
         }
     }
+    export type ZoneInput = { coord0: Coord<CoordKind>, coord1: Coord<CoordKind>, name?: string }
     const INITIAL_SPACE: string = "InitialSpace"
     /**
      * @description Zone class representing an actual 3D chunk boundary selection.
      * Implements SpaceZone to unify outer-facing properties and internal metadata representation.
      */
     export class Zone implements SpaceZone {
-        private readonly initial0: Coord<any>;
-        private readonly initial1: Coord<any>;
+        public static fromPositions(pos0: Position, pos1: Position, name?: string): ZoneInput {
+            const coord0 = Coord.fromPosition(pos0);
+            const coord1 = Coord.fromPosition(pos1);
+            return {coord0, coord1, name};
+        };
+        private readonly Origin_0: Origin;
+        private readonly Terminal_0: Terminal;
 
         public _Name: string;
         public _Origin: Origin;
@@ -608,14 +612,14 @@ namespace BlockScale {
             InternalSpace.overlay(this as InternalSpace, internal);
         };
         public Reset(): void {
-            const InternalDefl: InternalSpace = InternalSpace.create(this.initial0, this.initial1, { ANC: {} });
+            const InternalDefl: InternalSpace = InternalSpace.create(this.Origin_0, this.Terminal_0, { ANC: {} });
             InternalDefl._Name = this._Name || INITIAL_SPACE;
             this.overlay(InternalDefl);
         };
-        public constructor(pos0: Position, pos1: Position, name?: string) {
-            this._Name = name || INITIAL_SPACE;
-            this.initial0 = Coord.fromPosition(pos0);
-            this.initial1 = Coord.fromPosition(pos1);
+        protected constructor(zone_input: ZoneInput) {
+            this._Name = zone_input.name || INITIAL_SPACE;
+            this.Origin_0 = Coord.getOrigin(zone_input.coord0, zone_input.coord1);
+            this.Terminal_0 = Coord.getTerminal(zone_input.coord0, zone_input.coord1);
             this.Reset();
         };
         public get Name(): string {
@@ -892,9 +896,8 @@ namespace ChunkScale {
         public EnsureActiveAround(x: BlockScale, z: BlockScale): void {
             ChunkScale.EnsureActiveXZ(this, x, z)
         };
-        public constructor(pos0: Position, pos1: Position, _name?: string) {
-            super(pos0, pos1, _name);
-            ChunkScale.DetermineZoneTile(this);
+        protected constructor(zone_input: BlockScale.ZoneInput) {
+            super(zone_input)
         };
     };
 };
@@ -1011,9 +1014,7 @@ namespace Runtime {
         public StartTime: GameTicks = -1;
         public ElapsedTime: GameTicks = -1;
         public CurrentRate: GameTicks = -1;
-        public constructor(pos0: Position, pos1: Position, _name?: string) {
-            super(pos0, pos1, _name);
-        };
+
         public StartTracking(): void {
             StartTracking(this);
         };
@@ -1026,9 +1027,26 @@ namespace Runtime {
         public NextSubZoneID(): string {
             return NextSubZoneID(this);
         };
+        protected constructor(zone_input: BlockScale.ZoneInput) {
+            super(zone_input)
+        };
+        public static create(pos0: Position, pos1: Position, name?: string): Zone {
+            const zone_input = this.fromPositions(pos0, pos1, name);
+            return new this(zone_input)
+        };
     };
 };
-type Zone = Runtime.Info
-function zone(pos0: Position, pos1: Position, _name?: string): Zone {
-    return new Runtime.Zone(pos0, pos1, _name);
-};
+//% weight=500
+namespace MinecraftZone {
+    type MinecraftZone = Runtime.Zone;
+    //% block="zone|$pos0=minecraftCreateWorldPosition|$pos1=minecraftCreateWorldPosition||name:|$name"
+    //% blockSetVariable="zone"
+    export function zone(pos0: Position, pos1: Position, name?: string): MinecraftZone {
+        return Runtime.Zone.create(pos0, pos1, name)
+    };
+    //% block
+    //% zone.shadow=variables_get zone.defl="zone"
+    export function SpaceString(zone: MinecraftZone) {
+        return BlockScale.Space.toString(zone)
+    };
+}
