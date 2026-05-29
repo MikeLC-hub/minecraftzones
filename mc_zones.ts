@@ -6,6 +6,25 @@ type CmdStr = string;
 const OPENBRACKET = "{";
 const CLOSEBRACKET = "}";
 const NEWLINE = "/n";
+const UNDERSCORE = "_";
+const CX = "cX: ";
+const CZ = "cZ: ";
+const SPANX = "spanX: ";
+const SPANZ = "spanZ: ";
+const COMMA = ", ";
+const AREA = "Area: ";
+const TICKINGSECTORS = "TickingSectors: ";
+const SECTOR = "Sector: ";
+const ID = "Id: ";
+const ACTIVEIDX = "ActiveIdx: ";
+const COUNT = "Count: ";
+const TILE = "Tile: ";
+const INPROGRESS = "InProgress: ";
+const STARTTIME = "StartTime: ";
+const ELAPSEDTIME = "ElapsedTime: ";
+const CURRENTZONEINDEX = "CurrentZoneIndex: ";
+const LASTZONEINDEX = "LastZoneIndex: ";
+const CURRENTRATE = "CurrentRate: ";
 
 type BlockScale = number;
 namespace BlockScale {
@@ -580,10 +599,8 @@ namespace BlockScale {
 
                 const SurfaceSpace: InternalSpace = { _Name, _Origin, _Terminal, AnchorSource, Configs }
                 InternalSpace.ApplyVolumeLimit(SurfaceSpace);
-                return SurfaceSpace
-
-
-            }
+                return SurfaceSpace;
+            };
         }
     }
     export type ZoneInput = { coord0: Coord<CoordKind>, coord1: Coord<CoordKind>, name?: string }
@@ -654,6 +671,9 @@ namespace BlockScale {
             if (face === Face.None) return;
             this.overlay(Space.Surface.getFace(this as Space, face, pattern, outside));
         };
+        public toString(): string {
+            return Space.toString(this);
+        }
     };
 }
 //
@@ -670,6 +690,24 @@ namespace ChunkScale {
         DeactivateSectors(): void;
         EnsureActiveAround(x: BlockScale, z: BlockScale): void;
     };
+    export function toString(ticksecs: TickingSectors): string {
+        const CountStr: string = COUNT + ticksecs.SectorCount;
+        const TileStr: string = TILE + Span.toString(ticksecs.Tile);
+
+        const Header: string = TICKINGSECTORS + CountStr + COMMA + TileStr + NEWLINE;
+        const SectorsStrArr: string[] = [];
+        const activeSectors: Sector[] = ticksecs.TickingSectors;
+        for (let sector of activeSectors) {
+            SectorsStrArr.push(Sector.toString(sector))
+        }
+
+        return Header + SectorsStrArr.join(NEWLINE);
+    }
+
+
+
+
+
 
     const enum Pair { Origin, Offset }
     const enum Dimension { X, Z }
@@ -705,8 +743,22 @@ namespace ChunkScale {
         export function toCmdStr(chunk: Chunk): string {
             return `${toBlockScale(chunk.cX)} 0 ${toBlockScale(chunk.cZ)}`;
         };
+        export function toString(chunk: Chunk): string {
+            return CX + chunk.cX + COMMA + CZ + chunk.cZ;
+        };
+    }
+    namespace Span {
+        export function toString(span: Span): string {
+            return SPANX + span.spanX + COMMA + SPANZ + span.spanZ;
+        }
     }
     namespace Area {
+        export function toString(area: Area): string {
+            const ChunkStr: string = Chunk.toString(area as Chunk);
+            const SpanStr: string = Span.toString(area as Span);
+            return AREA + ChunkStr + COMMA + SpanStr;
+        };
+
         export const enum Tile {
             Skinny, Tall, Long, Chunky, Broad, Flat, Squashed
         };
@@ -797,6 +849,12 @@ namespace ChunkScale {
     }
     namespace Sector {
         const MAX_ACTIVE_SECTORS: number = 10;
+        export function toString(sector: Sector): string {
+            const AreaStr: string = Area.toString(sector)
+            const IdStr: string = ID + sector.ID;
+            const ActiveIdxStr: string = ACTIVEIDX + sector.ActiveIdx;
+            return SECTOR + IdStr + COMMA + ActiveIdxStr + COMMA + AreaStr;
+        }
         /**
          * Central management function. 
          * Iterates backwards to sync indices and remove deprecated sectors in one pass.
@@ -899,6 +957,12 @@ namespace ChunkScale {
         protected constructor(zone_input: BlockScale.ZoneInput) {
             super(zone_input)
         };
+
+        public toString(): string {
+            const SpaceStr: string = super.toString() + NEWLINE;
+            const SectorsStr: string = toString(this as TickingSectors);
+            return SpaceStr + SectorsStr;
+        };
     };
 };
 
@@ -920,6 +984,15 @@ namespace Runtime {
         ReportUpdate(): void;
         ReportSummary(): void;
         NextSubZoneID(): string;
+    };
+    export function toString(info: Info): string {
+        const InProgressStr: string = INPROGRESS + info.InProgress;
+        const CurrentZoneIndexStr: string = CURRENTZONEINDEX + info.CurrentZoneIndex;
+        const LastZoneIndexStr: string = LASTZONEINDEX + info.LastZoneIndex;
+        const StartTimeStr: string = STARTTIME + info.StartTime;
+        const ElapsedTimeStr: string = ELAPSEDTIME + info.ElapsedTime;
+        const CurrentRateStr: string = CURRENTRATE + info.CurrentRate;
+        return [InProgressStr, CurrentZoneIndexStr, LastZoneIndexStr, StartTimeStr, ElapsedTimeStr, CurrentRateStr].join(NEWLINE)
     };
     const FONT = {
         GOLD: "§6",
@@ -1027,6 +1100,11 @@ namespace Runtime {
         public NextSubZoneID(): string {
             return NextSubZoneID(this);
         };
+        public toString(): string {
+            const ParentStr = super.toString() + NEWLINE;
+            const ThisStr = toString(this as Info);
+            return ParentStr + ThisStr;
+        };
         protected constructor(zone_input: BlockScale.ZoneInput) {
             super(zone_input)
         };
@@ -1039,14 +1117,78 @@ namespace Runtime {
 //% weight=500
 namespace MinecraftZone {
     type MinecraftZone = Runtime.Zone;
-    //% block="zone|$pos0=minecraftCreateWorldPosition|$pos1=minecraftCreateWorldPosition||name:|$name"
+    //% block="Zone|$pos0=minecraftCreateWorldPosition|$pos1=minecraftCreateWorldPosition||name:|$name"
     //% blockSetVariable="zone"
     export function zone(pos0: Position, pos1: Position, name?: string): MinecraftZone {
         return Runtime.Zone.create(pos0, pos1, name)
     };
     //% block
     //% zone.shadow=variables_get zone.defl="zone"
-    export function SpaceString(zone: MinecraftZone) {
-        return BlockScale.Space.toString(zone)
+    export function ZoneString(zone: MinecraftZone) {
+        return zone.toString();
+    };
+    //% block
+    //% zone.shadow=variables_get zone.defl="zone"
+    //% inlineInputMode=inline
+    export function ChooseFace(zone: MinecraftZone, face: BlockScale.Face, pattern: BlockScale.Pattern, outside ?: boolean): void {
+        return zone.setFace(face, pattern, outside);
+    };
+    //% block
+    //% zone.shadow=variables_get zone.defl="zone"
+    //% handlerStatement
+    //% draggableParameters="reporter, reporter, reporter"
+    export function zoning(zone: MinecraftZone, handler: (name: string, origin: Position, terminal: Position) => void): void {
+        if (zone.InProgress) return;
+        const PAUSE = (): void => { loops.pause(1) }
+
+        const anchor_x: number = zone.Anchor.x | 0;
+        const anchor_y: number = zone.Anchor.y | 0;
+        const anchor_z: number = zone.Anchor.z | 0;
+
+        const x_count: number = zone.AxialX.count | 0;
+        const y_count: number = zone.AxialY.count | 0;
+        const z_count: number = zone.AxialZ.count | 0;
+
+        const x_interval: number = zone.AxialX.interval | 0;
+        const y_interval: number = zone.AxialY.interval | 0;
+        const z_interval: number = zone.AxialZ.interval | 0;
+
+        const net_x_blocks: number = (zone.AxialX.blocks - 1) | 0;
+        const net_y_blocks: number = (zone.AxialY.blocks - 1) | 0;
+        const net_z_blocks: number = (zone.AxialZ.blocks - 1) | 0;
+
+        zone.DeactivateSectors();
+        zone.StartTracking();
+
+        for (let x_index = 0; x_index < x_count; x_index++) {
+            const origin_x = anchor_x + (x_index * x_interval);
+            const terminal_x = origin_x + net_x_blocks;
+
+            const move_left_to_right = ((x_index & 1) === 0);
+            for (let z_index = 0; z_index < z_count; z_index++) {
+                const z_multiplier = move_left_to_right ? z_index : (z_count - 1 - z_index);
+
+                const origin_z = anchor_z + (z_multiplier * z_interval);
+                const terminal_z = origin_z + net_z_blocks;
+
+
+                zone.EnsureActiveAround(origin_x, origin_z);
+                zone.EnsureActiveAround(terminal_x, terminal_z);
+
+                for (let y_index = 0; y_index < y_count; y_index++) {
+                    const origin_y = anchor_y + (y_index * y_interval);
+                    const terminal_y = origin_y + net_y_blocks;
+
+                    const name: string = zone.NextSubZoneID();
+                    const origin: Position = world(origin_x, origin_y, origin_z);
+                    const terminal: Position = world(terminal_x, terminal_y, terminal_z);
+                    handler(name, origin, terminal);
+
+                    zone.ReportUpdate();
+                };
+            };
+        };
+        zone.ReportSummary();
+        zone.DeactivateSectors();
     };
 }
