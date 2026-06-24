@@ -1529,7 +1529,10 @@ namespace Zones {
         return SpaceZone.create(pos0, pos1, _id);
     }
 }
-
+interface Pair {
+    abscissa: BlockScale,
+    ordinate: BlockScale,
+}
 interface Cartesian {
     plane: Plane;
     series: Coord[];
@@ -1537,11 +1540,18 @@ interface Cartesian {
 
 //% weight=495 icon="\uf279"
 namespace Cartesians {
+    //% block blockId="minecraftCartesianPair"
+    //% blockHidden=true
+    export function pair(abscissa: BlockScale, ordinate: BlockScale): Pair {
+        return { abscissa, ordinate }
+    }
     //% block
+    //% pair.shadow=minecraftCartesianPair
     //% space.shadow=variables_get space.defl="space"
     //% blockSetVariable="cartesian"
     //% inlineInputMode=inline
-    export function create(space: SpaceZone, plane: Plane, abscissa: BlockScale, ordinate: BlockScale, _bound?: Bound): Cartesian {
+    export function create(pair: Pair, space: SpaceZone, plane: Plane, _bound?: Bound): Cartesian {
+        
         const bound: Bound = _bound !== undefined ? _bound : DEFL_BOUND;
 
         let offset: number = 0;
@@ -1551,20 +1561,21 @@ namespace Cartesians {
             case Bound.Outer: offset = -1; break;
         }
         const applicate: BlockScale = Coords.getApplicate(space.Origin, plane) + offset;
-        const series = [Coords.newCartesian(abscissa, ordinate, applicate, plane)];
+        const series = [Coords.newCartesian(pair.abscissa, pair.ordinate, applicate, plane)];
         return { plane, series };
     }
 
-    //% block="add point|$abscissa|$ordinate|to|$cartesian"
+    //% block
+    //% pair.shadow=minecraftCartesianPair
     //% cartesian.shadow=variables_get cartesian.defl="cartesian"
-    export function addPair(cartesian: Cartesian, abscissa: BlockScale, ordinate: BlockScale): boolean {
+    export function addPair(cartesian: Cartesian, pair: Pair): boolean {
         const plane: Plane = cartesian.plane;
         const series: Coord[] = cartesian.series;
 
         if (series.length < 1) return false;
 
         const applicate: BlockScale = Coords.getApplicate(series[0], plane);
-        const coord = Coords.newCartesian(abscissa, ordinate, applicate, plane);
+        const coord = Coords.newCartesian(pair.abscissa, pair.ordinate, applicate, plane);
 
         cartesian.series.push(coord);
         return true;
