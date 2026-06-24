@@ -11,7 +11,8 @@ const enum CoordKind {
     Origin,
     Terminal,
     Delta,
-    Anchor
+    Anchor,
+    Planar
 }
 
 const COORDNAME: string[] = [
@@ -19,7 +20,8 @@ const COORDNAME: string[] = [
     "Origin",
     "Terminal",
     "Delta",
-    "Anchor"
+    "Anchor",
+    "Planar"
 ];
 
 /**
@@ -59,8 +61,10 @@ type Terminal = LockedCoord<CoordKind.Terminal>;
 type Delta = Coord3D<CoordKind.Delta>;
 type Anchor = Coord3D<CoordKind.Anchor>;
 
+type Planar = Coord3D<CoordKind.Planar>
+
 // Discriminated union of all coordinate types
-type Coord = Origin | Terminal | Delta | Anchor | Coord3D<CoordKind> | LockedCoord<CoordKind>;
+type Coord = Origin | Terminal | Delta | Anchor | Planar | Coord3D<CoordKind> | LockedCoord<CoordKind>;
 
 /**
  * ============================================================================
@@ -87,6 +91,15 @@ const Applicate: { [key: number]: Axis } = {
     [Plane.Zy]: Axis.X,
     [Plane.Zx]: Axis.Y
 };
+
+interface Pair {
+    abscissa: BlockScale,
+    ordinate: BlockScale,
+}
+interface Cartesian {
+    plane: Plane;
+    series: Planar[];
+}
 
 type Id = string;
 
@@ -457,22 +470,22 @@ namespace Coords {
         setAxis(coord, axis, scalar);
     }
 
-    export function toPlane<C extends Coord = Coord>(coord: C, plane: Plane): C {
-        return create<C>(
+    export function toPlanar<C extends Coord = Coord>(coord: C, plane: Plane): Planar {
+        return create<Planar>(
             getAbscissa(coord, plane),
             getOrdinate(coord, plane),
             getApplicate(coord, plane),
-            coord.kind !== undefined ? coord.kind : CoordKind.Undeclared
+            CoordKind.Planar
         );
     }
 
-    export function newCartesian(abscissa: BlockScale, ordinate: BlockScale, applicate: BlockScale, _plane?: Plane): Coord3D<any> {
+    export function newPlanar(abscissa: BlockScale, ordinate: BlockScale, applicate: BlockScale, _plane?: Plane): Planar {
         const plane: Plane = _plane !== undefined ? _plane : DEFL_PLANE;
-        const cartesian = getDefault<Coord3D<any>>();
-        setAbscissa(cartesian, plane, abscissa);
-        setOrdinate(cartesian, plane, ordinate);
-        setApplicate(cartesian, plane, applicate);
-        return cartesian;
+        const planar = getDefault<Planar>();
+        setAbscissa(planar, plane, abscissa);
+        setOrdinate(planar, plane, ordinate);
+        setApplicate(planar, plane, applicate);
+        return planar;
     }
 }
 
@@ -803,15 +816,15 @@ namespace ZoneSpaces {
             }
         }
 
-        let segmentX: Segment = space.SegX;
-        let segmentY: Segment = space.SegY;
-        let segmentZ: Segment = space.SegZ;
+        let segX: Segment = space.SegX;
+        let segY: Segment = space.SegY;
+        let segZ: Segment = space.SegZ;
 
         const setSegment = (axis: Axis, segment: Segment): void => {
             switch (axis) {
-                case Axis.X: segmentX = segment; break;
-                case Axis.Y: segmentY = segment; break;
-                case Axis.Z: segmentZ = segment; break;
+                case Axis.X: segX = segment; break;
+                case Axis.Y: segY = segment; break;
+                case Axis.Z: segZ = segment; break;
             }
         }
         setSegment(abscissaAxis, pattern.abscissa);
@@ -821,9 +834,9 @@ namespace ZoneSpaces {
         calibrate(space, State.Update, {
             Anchor: pattern.anchor,
             Design: design,
-            SegX: segmentX,
-            SegY: segmentY,
-            SegZ: segmentZ
+            SegX: segX,
+            SegY: segY,
+            SegZ: segZ
         });
     }
 }
@@ -1331,7 +1344,6 @@ namespace Runtimes {
 }
 
 class RuntimeZone implements ZoneRuntime {
-    public static InProgress: boolean = false;
     public readonly Id: string;
     public readonly LastZoneIndex: number;
     protected _CurrentZoneIndex: number = -1;
@@ -1529,14 +1541,6 @@ namespace Zones {
         return SpaceZone.create(pos0, pos1, _id);
     }
 }
-interface Pair {
-    abscissa: BlockScale,
-    ordinate: BlockScale,
-}
-interface Cartesian {
-    plane: Plane;
-    series: Coord[];
-}
 
 //% weight=495 icon="\uf279"
 namespace Cartesians {
@@ -1545,13 +1549,13 @@ namespace Cartesians {
     export function pair(abscissa: BlockScale, ordinate: BlockScale): Pair {
         return { abscissa, ordinate }
     }
-    //% block
+    //% block="new series|$pair|in|$space|on|$plane||bound?|$_bound"
     //% pair.shadow=minecraftCartesianPair
     //% space.shadow=variables_get space.defl="space"
     //% blockSetVariable="cartesian"
     //% inlineInputMode=inline
-    export function create(pair: Pair, space: SpaceZone, plane: Plane, _bound?: Bound): Cartesian {
-        
+    export function newSeries(pair: Pair, space: SpaceZone, plane: Plane, _bound?: Bound): Cartesian {
+
         const bound: Bound = _bound !== undefined ? _bound : DEFL_BOUND;
 
         let offset: number = 0;
@@ -1561,23 +1565,23 @@ namespace Cartesians {
             case Bound.Outer: offset = -1; break;
         }
         const applicate: BlockScale = Coords.getApplicate(space.Origin, plane) + offset;
-        const series = [Coords.newCartesian(pair.abscissa, pair.ordinate, applicate, plane)];
+        const series: Planar[] = [Coords.newPlanar(pair.abscissa, pair.ordinate, applicate, plane)];
         return { plane, series };
     }
 
-    //% block
+    //% block="$cartesian|add|$pair"
     //% pair.shadow=minecraftCartesianPair
     //% cartesian.shadow=variables_get cartesian.defl="cartesian"
-    export function addPair(cartesian: Cartesian, pair: Pair): boolean {
+    export function add(cartesian: Cartesian, pair: Pair): boolean {
         const plane: Plane = cartesian.plane;
-        const series: Coord[] = cartesian.series;
+        const series: Planar[] = cartesian.series;
 
         if (series.length < 1) return false;
 
         const applicate: BlockScale = Coords.getApplicate(series[0], plane);
-        const coord = Coords.newCartesian(pair.abscissa, pair.ordinate, applicate, plane);
+        const planar = Coords.newPlanar(pair.abscissa, pair.ordinate, applicate, plane);
 
-        cartesian.series.push(coord);
+        cartesian.series.push(planar);
         return true;
     }
 
@@ -1607,13 +1611,4 @@ namespace Cartesians {
         }
         return true;
     }
-}
-
-function cycleArray<T>(arr: T[], idx: number): T {
-    const length: number = arr.length;
-    if (length < 1) return undefined;
-
-    const multiple: number = (idx / length) | 0;
-    const index: number = idx - (multiple * length);
-    return arr[index];
 }
