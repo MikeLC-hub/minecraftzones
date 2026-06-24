@@ -60,7 +60,7 @@ type Delta = Coord3D<CoordKind.Delta>;
 type Anchor = Coord3D<CoordKind.Anchor>;
 
 // Discriminated union of all coordinate types
-type Coord = Origin | Terminal | Delta | Anchor | Coord3D<CoordKind>;
+type Coord = Origin | Terminal | Delta | Anchor | Coord3D<CoordKind> | LockedCoord<CoordKind>;
 
 /**
  * ============================================================================
@@ -245,6 +245,7 @@ const DEFL_SURFACE: Surface = Surface.Volume;
 const DEFL_PATTERN: Design = Design.Solid;
 const DEFL_BOUND: Bound = Bound.Exact;
 const DEFL_AXIS: Axis = Axis.X;
+const DEFL_PLANE: Plane = Plane.Zx;
 
 function newSegment(): Segment { return {}; }
 function newConfigs(): Configs { return {}; }
@@ -407,6 +408,71 @@ namespace Coords {
             Anchored(_anchor.z, coord.z),
             coord.kind
         );
+    }
+
+    export function getAxis<C extends Coord>(coord: C, axis: Axis): BlockScale {
+        switch (axis) {
+            case Axis.X: return coord.x;
+            case Axis.Y: return coord.y;
+            case Axis.Z:
+            default: return coord.z;
+        }
+    }
+
+    export function setAxis<C extends Coord>(coord: C, axis: Axis, scalar: BlockScale): void {
+        switch (axis) {
+            case Axis.X: (coord as any).x = scalar; break;
+            case Axis.Y: (coord as any).y = scalar; break;
+            case Axis.Z: (coord as any).z = scalar; break;
+        }
+    }
+
+    export function getAbscissa(coord: Coord, plane: Plane): BlockScale {
+        const axis: Axis = Abscissa[plane];
+        return getAxis(coord, axis);
+    }
+
+    export function setAbscissa(coord: Coord, plane: Plane, scalar: BlockScale): void {
+        const axis: Axis = Abscissa[plane];
+        setAxis(coord, axis, scalar);
+    }
+
+    export function getOrdinate(coord: Coord, plane: Plane): BlockScale {
+        const axis: Axis = Ordinate[plane];
+        return getAxis(coord, axis);
+    }
+
+    export function setOrdinate(coord: Coord, plane: Plane, scalar: BlockScale): void {
+        const axis: Axis = Ordinate[plane];
+        setAxis(coord, axis, scalar);
+    }
+
+    export function getApplicate(coord: Coord, plane: Plane): BlockScale {
+        const axis: Axis = Applicate[plane];
+        return getAxis(coord, axis);
+    }
+
+    export function setApplicate(coord: Coord, plane: Plane, scalar: BlockScale): void {
+        const axis: Axis = Applicate[plane];
+        setAxis(coord, axis, scalar);
+    }
+
+    export function toPlane<C extends Coord = Coord>(coord: C, plane: Plane): C {
+        return create<C>(
+            getAbscissa(coord, plane),
+            getOrdinate(coord, plane),
+            getApplicate(coord, plane),
+            coord.kind !== undefined ? coord.kind : CoordKind.Undeclared
+        );
+    }
+
+    export function newCartesian(abscissa: BlockScale, ordinate: BlockScale, applicate: BlockScale, _plane?: Plane): Coord3D<any> {
+        const plane: Plane = _plane !== undefined ? _plane : DEFL_PLANE;
+        const cartesian = getDefault<Coord3D<any>>();
+        setAbscissa(cartesian, plane, abscissa);
+        setOrdinate(cartesian, plane, ordinate);
+        setApplicate(cartesian, plane, applicate);
+        return cartesian;
     }
 }
 
@@ -709,9 +775,9 @@ namespace ZoneSpaces {
             ? SurfacePlane[space.Surface]
             : Plane.Xy;
 
-        const abscissa: Axis = Abscissa[plane];
-        const ordinate: Axis = Ordinate[plane];
-        const applicate: Axis = Applicate[plane];
+        const abscissaAxis: Axis = Abscissa[plane];
+        const ordinateAxis: Axis = Ordinate[plane];
+        const applicateAxis: Axis = Applicate[plane];
 
         const solidAnchor: Anchor = Coords.newAnchor();
         const gridAnchor: Anchor = Coords.gridAnchor(plane);
@@ -748,9 +814,9 @@ namespace ZoneSpaces {
                 case Axis.Z: segmentZ = segment; break;
             }
         }
-        setSegment(abscissa, pattern.abscissa);
-        setSegment(ordinate, pattern.ordinate);
-        setSegment(applicate, pattern.applicate);
+        setSegment(abscissaAxis, pattern.abscissa);
+        setSegment(ordinateAxis, pattern.ordinate);
+        setSegment(applicateAxis, pattern.applicate);
 
         calibrate(space, State.Update, {
             Anchor: pattern.anchor,
@@ -1464,119 +1530,79 @@ namespace Zones {
     }
 }
 
+interface Cartesian {
+    plane: Plane;
+    series: Coord[];
+}
 
-// CartesianPair is a number[], but only the first two values will every be looked at.
-type Cartesian = { abscissa: number; ordinate: number, applicate: number }
-type CartesianPair = number[]
 //% weight=495 icon="\uf279"
 namespace Cartesians {
-    function abstraction(x: number, y: number, z?: number): Cartesian {
-        const abscissa: number = (x || 0) | 0;
-        const ordinate: number = (y || 0) | 0;
-        const applicate: number = (z || 0) | 0;
-        return { abscissa, ordinate, applicate }
-    }
-    export function fromPair(pair: CartesianPair, applicate?: number): Cartesian {
-        const abscissa = (pair[0] || 0) | 0;
-        const terminal = (pair[1] || 0) | 0;
-        return abstraction(abscissa, terminal, applicate);
-    }
-    //% block="series|x:|$abscissa|y:|$ordinate"
-    //% blockSetVariable="series"
-    export function series(abscissa: number, ordinate: number): CartesianPair[] {
-        const firstPair: CartesianPair = [abscissa | 0, ordinate | 0]
-        return [firstPair];
-    }
-    //% block="add|x:|$abscissa|y:|$ordinate|to|$series"
-    //% series.shadow=variables_get series.defl="series"
-    export function addPair(series: CartesianPair[], abscissa: number, ordinate: number): void {
-        series.push([abscissa | 0, ordinate | 0]);
-    }
-
-    /**
-     * Resolves an abstract Cartesian 2D coordinate pair (abscissa, ordinate) placed
-     * at a depth (applicate) onto a flat plane on a target 3D Surface.
-     * * Abstract Model Projection:
-     * - Left/Right Surface: Lock X (depth). Map abstract plane horizontal to Z, vertical to Y.
-     * - Bottom/Top Surface: Lock Y (depth). Map abstract plane horizontal to X, vertical to Z.
-     * - Front/Back/Default Surface: Lock Z (depth). Map abstract plane horizontal to X, vertical to Y.
-     */
-    function toPosition(carte: Cartesian, surface?: Surface): Position {
-        const { abscissa: u, ordinate: v, applicate: w } = carte;
-
-        switch (surface) {
-            case Surface.Left:
-            case Surface.Right:
-                // fixed X (depth = w), horizontal abstract is Z (u), vertical abstract is Y (v)
-                return world(w, v, u);
-
-            case Surface.Bottom:
-            case Surface.Top:
-                // fixed Y (depth = w), horizontal abstract is X (u), vertical abstract is Z (v)
-                return world(u, w, v);
-
-            case Surface.Front:
-            case Surface.Back:
-            case Surface.Volume:
-            default:
-                // fixed Z (depth = w), horizontal abstract is X (u), vertical abstract is Y (v)
-                return world(u, v, w);
-        }
-    }
-
-    //% block="$space" blockId=minecraftSpaceApplicate
+    //% block
     //% space.shadow=variables_get space.defl="space"
-    //% blockHidden=true
-    export function getSpaceApplicate(space: SpaceZone, _surface?: Surface, _bound?: Bound): number {
-        const surface: Surface = _surface || space.Surface;
-        const bound: Bound = _bound || (Bound.Inner as Bound);
+    //% blockSetVariable="cartesian"
+    //% inlineInputMode=inline
+    export function create(space: SpaceZone, plane: Plane, abscissa: BlockScale, ordinate: BlockScale, _bound?: Bound): Cartesian {
+        const bound: Bound = _bound !== undefined ? _bound : DEFL_BOUND;
 
         let offset: number = 0;
         switch (bound) {
-            case Bound.Inner: offset = -1; break;
+            case Bound.Inner: offset = 1; break;
             case Bound.Exact: offset = 0; break;
-            case Bound.Outer: offset = 1; break;
-            default: offset = 0; break;
+            case Bound.Outer: offset = -1; break;
         }
-        const oy = space.Origin.y - offset;
-        const ox = space.Origin.x - offset;
-        const oz = space.Origin.z - offset;
-        const tx = space.Terminal.x + offset;
-        const ty = space.Terminal.y + offset;
-        const tz = space.Terminal.z + offset;
-
-        switch (surface) {
-            case Surface.Left: return ox;
-            case Surface.Right: return tx;
-            case Surface.Bottom: return oy;
-            case Surface.Top: return ty;
-            case Surface.Front: return oz;
-            case Surface.Back: return tz;
-            case Surface.Volume:
-            default: return oy;
-        }
+        const applicate: BlockScale = Coords.getApplicate(space.Origin, plane) + offset;
+        const series = [Coords.newCartesian(abscissa, ordinate, applicate, plane)];
+        return { plane, series };
     }
 
-    //% block="draw|$series|within|$applicate|$block||on|$surface|surface"
-    //% series.shadow=variables_get series.defl="series"
-    //% applicate.shadow=minecraftSpaceApplicate
+    //% block="add point|$abscissa|$ordinate|to|$cartesian"
+    //% cartesian.shadow=variables_get cartesian.defl="cartesian"
+    export function addPair(cartesian: Cartesian, abscissa: BlockScale, ordinate: BlockScale): boolean {
+        const plane: Plane = cartesian.plane;
+        const series: Coord[] = cartesian.series;
+
+        if (series.length < 1) return false;
+
+        const applicate: BlockScale = Coords.getApplicate(series[0], plane);
+        const coord = Coords.newCartesian(abscissa, ordinate, applicate, plane);
+
+        cartesian.series.push(coord);
+        return true;
+    }
+
+    //% block="draw series|$cartesian|with|$block||closed?|$closed"
+    //% cartesian.shadow=variables_get cartesian.defl="cartesian"
     //% block.shadow=minecraftBlock
     //% inlineInputMode=inline
-    export function draw(series: CartesianPair[], applicate: number, block: number, surface?: Surface, closed?: boolean): void {
+    export function draw(cartesian: Cartesian, block: number, closed?: boolean): boolean {
+        const series: Coord[] = cartesian.series;
         const series_length = series.length;
-        const last_index = series_length - 1
+        if (series_length < 1) return false;
 
+        const last_index = series_length - 1;
         for (let o = 0; o < series_length; o++) {
             let t: number = o + 1;
             if (t > last_index) {
-                if (closed) { t = 0 } else { return };
+                if (closed) { t = 0; } else { break; }
             }
-            const o_carte: Cartesian = fromPair(series[o], applicate);
-            const t_carte: Cartesian = fromPair(series[t], applicate);
+            const o_coord = series[o];
+            const t_coord = series[t];
 
-            // Minecraft MakeCode function.
-            shapes.line(block, toPosition(o_carte, surface), toPosition(t_carte, surface))
+            shapes.line(
+                block,
+                world(o_coord.x, o_coord.y, o_coord.z),
+                world(t_coord.x, t_coord.y, t_coord.z)
+            );
         }
-
+        return true;
     }
+}
+
+function cycleArray<T>(arr: T[], idx: number): T {
+    const length: number = arr.length;
+    if (length < 1) return undefined;
+
+    const multiple: number = (idx / length) | 0;
+    const index: number = idx - (multiple * length);
+    return arr[index];
 }
