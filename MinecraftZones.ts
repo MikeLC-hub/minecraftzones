@@ -1,9 +1,3 @@
-/**
- * ============================================================================
- * SECTION 1: Fundamental Dimensions & Coordinate Systems
- * ============================================================================
- */
-
 type BlockScale = number;
 
 const enum CoordKind {
@@ -24,19 +18,6 @@ const COORDNAME: string[] = [
     "Planar"
 ];
 
-/**
- * REPRESENTATION FOR MC/EXTERNAL VECTORS
- * Stubbed to ensure compiling and seamless integrations with external positioning libraries.
- */
-interface Position {
-    toWorld(): Position;
-    getValue(axis: Axis): number;
-}
-
-/**
- * GENERIC MUTABLE 3D COORDINATE
- * Default dynamic coordinate container.
- */
 type Coord3D<C extends CoordKind> = {
     x: BlockScale;
     y: BlockScale;
@@ -44,10 +25,6 @@ type Coord3D<C extends CoordKind> = {
     kind: C;
 };
 
-/**
- * GENERIC READONLY 3D COORDINATE
- * Enforces immutability constraints.
- */
 interface LockedCoord<C extends CoordKind> {
     readonly x: BlockScale;
     readonly y: BlockScale;
@@ -55,7 +32,6 @@ interface LockedCoord<C extends CoordKind> {
     readonly kind: C;
 }
 
-// Strongly-typed coordinate variants
 type Origin = LockedCoord<CoordKind.Origin>;
 type Terminal = LockedCoord<CoordKind.Terminal>;
 type Delta = Coord3D<CoordKind.Delta>;
@@ -63,14 +39,7 @@ type Anchor = Coord3D<CoordKind.Anchor>;
 
 type Planar = Coord3D<CoordKind.Planar>
 
-// Discriminated union of all coordinate types
 type Coord = Origin | Terminal | Delta | Anchor | Planar | Coord3D<CoordKind> | LockedCoord<CoordKind>;
-
-/**
- * ============================================================================
- * SECTION 2: Spatial Enumerations & Mappings
- * ============================================================================
- */
 
 const enum Plane { Xy, Zy, Zx }
 
@@ -97,7 +66,9 @@ interface Pair {
     ordinate: BlockScale,
 }
 interface Cartesian {
+    space: ZoneSpace;
     plane: Plane;
+    bound: Bound;
     series: Planar[];
 }
 
@@ -124,6 +95,7 @@ const enum Surface {
 }
 
 const SurfacePlane: { [key: number]: Plane } = {
+    [Surface.Volume]: Plane.Zy,
     [Surface.Left]: Plane.Zy,
     [Surface.Right]: Plane.Zy,
     [Surface.Bottom]: Plane.Zx,
@@ -141,6 +113,15 @@ const enum Bound {
     Inner,
     Exact,
     Outer
+}
+
+function getBoundOffset(bound: Bound): number {
+    switch (bound) {
+        case Bound.Inner: return 1;
+        case Bound.Outer: return -1;
+        case Bound.Exact:
+        default: return 0;
+    }
 }
 
 const DesignIds: string[] = [
@@ -166,12 +147,6 @@ interface Pattern {
 function newPattern(anchor: Anchor, abscissa: Segment, ordinate: Segment, applicate: Segment): Pattern {
     return { anchor, abscissa, ordinate, applicate };
 }
-
-/**
- * ============================================================================
- * SECTION 3: Axial Representation & Configuration
- * ============================================================================
- */
 
 type Axial = {
     readonly axis: Axis;
@@ -251,23 +226,61 @@ interface ZoneSpace extends Space {
     setDesign(newPattern: Design): void;
     reset(): void;
 }
+type ChunkScale = number;
+
+function ExecuteCmd(cmd: string): void {
+    player.execute(cmd);
+}
+
+const enum ChunkKind { Undeclared, Originus, Terminus, Span }
+const CHUNKNAME: string[] = ["Undeclared", "Originus", "Terminus", "Span"];
+
+type Chunk2D<K extends ChunkKind> = {
+    readonly x: ChunkScale;
+    readonly z: ChunkScale;
+    readonly kind: K;
+};
+
+type Originus = Chunk2D<ChunkKind.Originus>;
+type Terminus = Chunk2D<ChunkKind.Terminus>;
+type Span = Chunk2D<ChunkKind.Span>;
+
+type Chunk = Originus | Terminus | Span | Chunk2D<ChunkKind>;
+
+type Sector = {
+    Id: string;
+    Originus: Originus;
+    Span: Span;
+};
+
+interface SectorActive extends Sector {
+    ActiveIdx: number;
+    activate?(sectors: ActiveSector[]): void;
+    deactivate?(): void;
+    toString?(): string;
+}
+
+interface ZoneActive {
+    ActiveSectors: ActiveSector[];
+    SectorCount: number;
+    Tile: Span;
+    removeAll(): void;
+    ensureActiveAround(x: BlockScale, z: BlockScale): void;
+    toString?(): string;
+}
+
+const enum Adjacent { North, South, East, West }
 
 const DEFL_ID: Id = "MySpace_";
 const DEFL_STATE: State = State.Defl;
 const DEFL_SURFACE: Surface = Surface.Volume;
-const DEFL_PATTERN: Design = Design.Solid;
+const DEFL_DESIGN: Design = Design.Solid;
 const DEFL_BOUND: Bound = Bound.Exact;
 const DEFL_AXIS: Axis = Axis.X;
 const DEFL_PLANE: Plane = Plane.Zx;
 
 function newSegment(): Segment { return {}; }
 function newConfigs(): Configs { return {}; }
-
-/**
- * ============================================================================
- * SECTION 4: State Management Engine
- * ============================================================================
- */
 
 type Attribute = Id | Origin | Terminal | Surface | Design | Bound | Segment | Anchor | undefined;
 
@@ -308,18 +321,11 @@ function getState<A extends Attribute>(states: States<A>, state: State): A | und
     return undefined;
 }
 
-/**
- * ============================================================================
- * SECTION 5: Coordinate Logic & Calculations (Coords Namespace)
- * ============================================================================
- */
-
 namespace Coords {
     export function toString(coord: Coord): string {
         return `{ kind: ${COORDNAME[coord.kind]}, x: ${coord.x}, y: ${coord.y}, z: ${coord.z} }`;
     }
 
-    // Generics enabled: Automatically typing return coordinates safely to sub-types
     export function create<C extends Coord = Coord>(x: number, y: number, z: number, _kind?: CoordKind): C {
         const kind = _kind !== undefined ? _kind : CoordKind.Undeclared;
         const coord = {
@@ -331,7 +337,6 @@ namespace Coords {
         return coord as any as C;
     }
 
-    // Generics enabled: Defaults return type matching context demands
     export function getDefault<T extends Coord = Coord>(_kind?: CoordKind): T {
         return create<T>(0, 0, 0, _kind);
     }
@@ -423,7 +428,38 @@ namespace Coords {
         );
     }
 
-    export function getAxis<C extends Coord>(coord: C, axis: Axis): BlockScale {
+    export function determineOrigin(coordArr: Coord[]): Origin {
+        if (coordArr.length < 1) return undefined;
+        const proto = coordArr[0];
+        let xMin: BlockScale = proto.x;
+        let yMin: BlockScale = proto.y;
+        let zMin: BlockScale = proto.z;
+
+        for (let coord of coordArr) {
+            if (coord.x < xMin) { xMin = coord.x };
+            if (coord.y < yMin) { yMin = coord.y };
+            if (coord.z < zMin) { zMin = coord.z };
+        }
+
+        return create<Origin>(xMin, yMin, zMin, CoordKind.Origin);
+    }
+
+    export function determineTerminal(coordArr: Coord[]): Terminal {
+        if (coordArr.length < 1) return undefined;
+        const proto = coordArr[0];
+        let xMax: BlockScale = proto.x;
+        let yMax: BlockScale = proto.y;
+        let zMax: BlockScale = proto.z;
+
+        for (let coord of coordArr) {
+            if (coord.x > xMax) { xMax = coord.x };
+            if (coord.y > yMax) { yMax = coord.y };
+            if (coord.z > zMax) { zMax = coord.z };
+        }
+        return create<Terminal>(xMax, yMax, zMax, CoordKind.Terminal);
+    }
+
+    export function getScalar<C extends Coord>(coord: C, axis: Axis): BlockScale {
         switch (axis) {
             case Axis.X: return coord.x;
             case Axis.Y: return coord.y;
@@ -432,7 +468,7 @@ namespace Coords {
         }
     }
 
-    export function setAxis<C extends Coord>(coord: C, axis: Axis, scalar: BlockScale): void {
+    export function setScalar<C extends Coord>(coord: C, axis: Axis, scalar: BlockScale): void {
         switch (axis) {
             case Axis.X: (coord as any).x = scalar; break;
             case Axis.Y: (coord as any).y = scalar; break;
@@ -442,32 +478,32 @@ namespace Coords {
 
     export function getAbscissa(coord: Coord, plane: Plane): BlockScale {
         const axis: Axis = Abscissa[plane];
-        return getAxis(coord, axis);
+        return getScalar(coord, axis);
     }
 
     export function setAbscissa(coord: Coord, plane: Plane, scalar: BlockScale): void {
         const axis: Axis = Abscissa[plane];
-        setAxis(coord, axis, scalar);
+        setScalar(coord, axis, scalar);
     }
 
     export function getOrdinate(coord: Coord, plane: Plane): BlockScale {
         const axis: Axis = Ordinate[plane];
-        return getAxis(coord, axis);
+        return getScalar(coord, axis);
     }
 
     export function setOrdinate(coord: Coord, plane: Plane, scalar: BlockScale): void {
         const axis: Axis = Ordinate[plane];
-        setAxis(coord, axis, scalar);
+        setScalar(coord, axis, scalar);
     }
 
     export function getApplicate(coord: Coord, plane: Plane): BlockScale {
         const axis: Axis = Applicate[plane];
-        return getAxis(coord, axis);
+        return getScalar(coord, axis);
     }
 
     export function setApplicate(coord: Coord, plane: Plane, scalar: BlockScale): void {
         const axis: Axis = Applicate[plane];
-        setAxis(coord, axis, scalar);
+        setScalar(coord, axis, scalar);
     }
 
     export function toPlanar<C extends Coord = Coord>(coord: C, plane: Plane): Planar {
@@ -488,12 +524,6 @@ namespace Coords {
         return planar;
     }
 }
-
-/**
- * ============================================================================
- * SECTION 6: Axial Logic & Calculations (Axials Namespace)
- * ============================================================================
- */
 
 namespace Axials {
     export const BLOCK_LIMIT: BlockScale = 64;
@@ -585,11 +615,6 @@ namespace Axials {
     }
 }
 
-/**
- * ============================================================================
- * SECTION 7: ZoneSpace Configurations & Logic (ZoneSpaces Namespace)
- * ============================================================================
- */
 namespace ZoneSpaces {
 
     export const BLOCK_LIMIT: BlockScale = 32768;
@@ -692,7 +717,7 @@ namespace ZoneSpaces {
             update: config.Surface !== undefined ? config.Surface : undefined
         };
         const Designs: States<Design | undefined> = {
-            defl: DEFL_PATTERN as Design,
+            defl: DEFL_DESIGN as Design,
             current: space.Design !== undefined ? space.Design : undefined,
             update: config.Design !== undefined ? config.Design : undefined
         };
@@ -722,9 +747,7 @@ namespace ZoneSpaces {
         space.Design = getState(Designs, state);
         space.Bound = getState(Bounds, state);
 
-        // Resets the axials to match the current Origin and Terminal.
         syncAxials(space);
-        // Applies the volume constraints (which also resyncs the axials afterwards).
         applyVolumeLimit(space);
     }
 
@@ -740,13 +763,7 @@ namespace ZoneSpaces {
         const surface: Surface = _surface !== undefined ? _surface : space.Surface;
         const bound: Bound = _bound !== undefined ? _bound : space.Bound;
 
-        let offset: number = 0;
-        switch (bound) {
-            case Bound.Inner: offset = -1; break;
-            case Bound.Exact: offset = 0; break;
-            case Bound.Outer: offset = 1; break;
-            default: offset = 0; break;
-        }
+        const offset: number = getBoundOffset(bound)
 
         let ox: number = space._Origin0.x - offset;
         let oy: number = space._Origin0.y - offset;
@@ -783,7 +800,6 @@ namespace ZoneSpaces {
     export function setDesign(space: ZoneSpace, _design?: Design): void {
         const design: Design = _design !== undefined ? _design : space.Design;
 
-        // Lookup plane safely
         const plane: Plane = (space.Surface !== undefined && SurfacePlane[space.Surface] !== undefined)
             ? SurfacePlane[space.Surface]
             : Plane.Xy;
@@ -852,30 +868,30 @@ class SpaceZone implements ZoneSpace {
         const coord1: Coord = Coords.fromPosition(pos1);
         return new SpaceZone(id, coord0, coord1);
     }
-    public readonly _Id0: Id;
-    public readonly _Origin0: Origin;
-    public readonly _Terminal0: Terminal;
-    public readonly Zx: Axial;
-    public readonly Zy: Axial;
-    public readonly Zz: Axial;
-    // Calibrated Properties
-    public Id: Id;
-    public Origin: Origin;
-    public Terminal: Terminal;
-    public SegX: Segment;
-    public SegY: Segment;
-    public SegZ: Segment;
-    public Surface: Surface;
-    public Design: Design;
-    public Bound: Bound;
-    public Anchor: Anchor;
+    public readonly _Id0: Id = DEFL_ID;
+    public readonly _Origin0: Origin = Coords.getDefault(CoordKind.Origin);
+    public readonly _Terminal0: Terminal = Coords.getDefault(CoordKind.Terminal);
+
+    public readonly Zx: Axial = Axials.getDefault(Axis.X);
+    public readonly Zy: Axial = Axials.getDefault(Axis.Y);
+    public readonly Zz: Axial = Axials.getDefault(Axis.Z);
+
+    public Id: Id = DEFL_ID;
+    public Origin: Origin = Coords.getDefault(CoordKind.Origin);
+    public Terminal: Terminal = Coords.getDefault(CoordKind.Terminal);
+
+    public SegX: Segment = newSegment();
+    public SegY: Segment = newSegment();
+    public SegZ: Segment = newSegment();
+    public Surface: Surface = DEFL_SURFACE;
+    public Design: Design = DEFL_DESIGN;
+    public Bound: Bound = DEFL_BOUND;
+    public Anchor: Anchor = Coords.getDefault(CoordKind.Anchor);
+
     private constructor(id: Id, coord0: Coord, coord1: Coord) {
         this._Id0 = id;
         this._Origin0 = Coords.getOrigin(coord0, coord1);
         this._Terminal0 = Coords.getTerminal(coord0, coord1);
-        this.Zx = Axials.getDefault(Axis.X);
-        this.Zy = Axials.getDefault(Axis.Y);
-        this.Zz = Axials.getDefault(Axis.Z);
         ZoneSpaces.calibrate(this, State.Defl);
     }
     public reset(): void {
@@ -900,53 +916,6 @@ class SpaceZone implements ZoneSpace {
         return ZoneSpaces.toString(this, hidden);
     }
 }
-
-
-type ChunkScale = number;
-
-function ExecuteCmd(cmd: string): void {
-    player.execute(cmd);
-}
-
-const enum ChunkKind { Undeclared, Originus, Terminus, Span }
-const CHUNKNAME: string[] = ["Undeclared", "Originus", "Terminus", "Span"];
-
-type Chunk2D<K extends ChunkKind> = {
-    readonly x: ChunkScale;
-    readonly z: ChunkScale;
-    readonly kind: K;
-};
-
-type Originus = Chunk2D<ChunkKind.Originus>;
-type Terminus = Chunk2D<ChunkKind.Terminus>;
-type Span = Chunk2D<ChunkKind.Span>;
-
-type Chunk = Originus | Terminus | Span | Chunk2D<ChunkKind>;
-
-type Sector = {
-    Id: string;
-    Originus: Originus;
-    Span: Span;
-};
-
-interface SectorActive extends Sector {
-    ActiveIdx: number;
-    activate?(sectors: ActiveSector[]): void;
-    deactivate?(): void;
-    toString?(): string;
-}
-
-interface ZoneActive {
-    ActiveSectors: ActiveSector[];
-    SectorCount: number;
-    Tile: Span;
-    removeAll(): void;
-    ensureActiveAround(x: BlockScale, z: BlockScale): void;
-    toString?(): string;
-}
-
-const enum Adjacent { North, South, East, West }
-
 namespace Chunks {
     export const enum Tile {
         Skinny, Tall, Long, Chunky, Broad, Flat, Squashed
@@ -995,7 +964,7 @@ namespace Chunks {
         [Tile.Squashed]: create(33, 3, ChunkKind.Span)
     };
 
-    export const DEFAULT_TILE: Span = TILE[Tile.Chunky];
+    export const DEFL_TILE: Span = TILE[Tile.Chunky];
 
     export function getTile(ox: BlockScale, oz: BlockScale, tx: BlockScale, tz: BlockScale): Span {
         const origin_cX = BlockToChunk(ox | 0);
@@ -1101,10 +1070,8 @@ class ActiveSector implements SectorActive {
         const cmd = `tickingarea add ${Sectors.toCmdStr(this)} ${this.Id}`;
         ExecuteCmd(cmd);
 
-        // Put this sector at the front of the active queue
         sectors.unshift(this);
 
-        // Resolve indices and enforce the cap of 10 active sectors maximum
         for (let i = sectors.length - 1; i >= 0; i--) {
             const idx = i < 10 ? i : -1;
             sectors[i].ActiveIdx = idx | 0;
@@ -1159,11 +1126,9 @@ namespace ZoneActives {
             }
         }
 
-        // Failsafe condition: if the query chunk is completely disjointed from our 
-        // existing contiguous web, we tear down all current sectors and start a new origin.
         removeAll(active);
 
-        const span = active.Tile ? active.Tile : Chunks.DEFAULT_TILE;
+        const span = active.Tile ? active.Tile : Chunks.DEFL_TILE;
         const sector = Sectors.create(chunk.x, chunk.z, span.x, span.z, `temp_sector`);
         activateSector(active, sector);
     }
@@ -1215,7 +1180,7 @@ class ActiveZone implements ZoneActive {
     }
 
     public ActiveSectors: ActiveSector[] = [];
-    public Tile: Span;
+    public Tile: Span = Chunks.DEFL_TILE;
 
     public get SectorCount(): number {
         return ActiveSector.SectorCount;
@@ -1226,7 +1191,7 @@ class ActiveZone implements ZoneActive {
     }
 
     private constructor(tile?: Span) {
-        this.Tile = tile ? tile : Chunks.DEFAULT_TILE;
+        if (tile !== undefined) this.Tile = tile;
     }
 
     public removeAll(): void {
@@ -1318,7 +1283,6 @@ namespace Runtimes {
         ExecuteCmd(`tell @s ${NAME_STR}\n${TIME_STR}\n${TIMERATE_STR}\n${ZONERATE_STR}`);
     }
 
-    // HIGHLY OPTIMIZED HOT PATH: Fully inlined, utilizing zero-overhead property lookups
     export function ReportUpdate(runtime: ZoneRuntime): void {
         const currentIdx = runtime.CurrentZoneIndex;
         const lastIdx = runtime.LastZoneIndex;
@@ -1332,7 +1296,6 @@ namespace Runtimes {
         const mins = (total_seconds / 60) | 0;
         const secs = (total_seconds % 60) | 0;
 
-        // Assembly of raw titleraw command string via quick, static operations
         const cmd_str = "titleraw @s actionbar {\"rawtext\":[{\"text\":\"§7" +
             runtime.Id + "§r | §e" +
             PROGRESS_BAR[barIdx] + "§r | §e" +
@@ -1344,8 +1307,8 @@ namespace Runtimes {
 }
 
 class RuntimeZone implements ZoneRuntime {
-    public readonly Id: string;
-    public readonly LastZoneIndex: number;
+    public readonly Id: string = DEFL_ID;
+    public readonly LastZoneIndex: number = -1;
     protected _CurrentZoneIndex: number = -1;
     protected _StartTime: number = -1;
 
@@ -1544,45 +1507,51 @@ namespace Zones {
 
 //% weight=495 icon="\uf279"
 namespace Cartesians {
+    function PlanarFromPair(pair: Pair, applicate: BlockScale, plane: Plane, bound: Bound) {
+        return Coords.newPlanar(
+            pair.abscissa,
+            pair.ordinate,
+            applicate + getBoundOffset(bound),
+            plane
+        );
+    }
+
+    function SpaceApplicate(space: ZoneSpace, plane: Plane): BlockScale {
+        return Coords.getApplicate(space.Origin, plane)
+    }
     //% block blockId="minecraftCartesianPair"
-    //% blockHidden=true
     export function pair(abscissa: BlockScale, ordinate: BlockScale): Pair {
         return { abscissa, ordinate }
     }
-    //% block="new series|$pair|in|$space|on|$plane||bound?|$_bound"
+
+    //% block="cartesian|$pair|in|$space||on|$_plane|bound?|$_bound"
     //% pair.shadow=minecraftCartesianPair
     //% space.shadow=variables_get space.defl="space"
     //% blockSetVariable="cartesian"
     //% inlineInputMode=inline
-    export function newSeries(pair: Pair, space: SpaceZone, plane: Plane, _bound?: Bound): Cartesian {
-
+    export function create(pair: Pair, space: ZoneSpace, _plane?: Plane, _bound?: Bound): Cartesian {
+        const plane: Plane = _plane !== undefined ? _plane : SurfacePlane[space.Surface];
         const bound: Bound = _bound !== undefined ? _bound : DEFL_BOUND;
-
-        let offset: number = 0;
-        switch (bound) {
-            case Bound.Inner: offset = 1; break;
-            case Bound.Exact: offset = 0; break;
-            case Bound.Outer: offset = -1; break;
-        }
-        const applicate: BlockScale = Coords.getApplicate(space.Origin, plane) + offset;
-        const series: Planar[] = [Coords.newPlanar(pair.abscissa, pair.ordinate, applicate, plane)];
-        return { plane, series };
+        const applicate: BlockScale = SpaceApplicate(space, plane);
+        const series: Planar[] = [PlanarFromPair(pair, applicate, plane, bound)];
+        return { plane, series, space, bound };
     }
 
-    //% block="$cartesian|add|$pair"
-    //% pair.shadow=minecraftCartesianPair
+    //% block="$cartesian add $pairs"
     //% cartesian.shadow=variables_get cartesian.defl="cartesian"
-    export function add(cartesian: Cartesian, pair: Pair): boolean {
+    //% pairs.shadow=lists_create_with pairs.defl=minecraftCartesianPair
+    export function add(cartesian: Cartesian, pairs: Pair[], ): void {
+        const space: ZoneSpace = cartesian.space;
         const plane: Plane = cartesian.plane;
+        const bound: Bound = cartesian.bound;
         const series: Planar[] = cartesian.series;
+        const applicate: BlockScale = SpaceApplicate(space, plane);
 
-        if (series.length < 1) return false;
-
-        const applicate: BlockScale = Coords.getApplicate(series[0], plane);
-        const planar = Coords.newPlanar(pair.abscissa, pair.ordinate, applicate, plane);
-
-        cartesian.series.push(planar);
-        return true;
+        for (let pair of pairs) {
+            series.push(PlanarFromPair(pair, applicate, plane, bound))
+        }
+        cartesian.series = series;
+        sync(cartesian)
     }
 
     //% block="draw series|$cartesian|with|$block||closed?|$closed"
@@ -1610,5 +1579,37 @@ namespace Cartesians {
             );
         }
         return true;
+    }
+
+    function getCartesianOrigin(cartesian: Cartesian): Origin {
+        const series: Planar[] = cartesian.series;
+        if (series.length < 1) return undefined;
+        return Coords.determineOrigin(series);
+    }
+
+    function getCartesianTerminal(cartesian: Cartesian): Terminal {
+        const series: Planar[] = cartesian.series;
+        if (series.length < 1) return undefined;
+        return Coords.determineTerminal(series);
+    }
+
+    function sync(cartesian: Cartesian): boolean {
+
+        const cartOrigin: Origin = getCartesianOrigin(cartesian);
+        const cartTerminal: Terminal = getCartesianTerminal(cartesian);
+
+        if (cartOrigin === undefined || cartTerminal === undefined) return false;
+
+        const spaceOrigin: Origin = cartesian.space.Origin;
+        const spaceTerminal: Terminal = cartesian.space.Terminal;
+
+        const syncedOrigin: Origin = Coords.getOrigin(cartOrigin, spaceOrigin);
+        const syncedTerminal: Terminal = Coords.getTerminal(cartTerminal, spaceTerminal);
+
+        cartesian.space.config({
+            Origin: syncedOrigin,
+            Terminal: syncedTerminal
+        });
+        return true
     }
 }
